@@ -1,0 +1,193 @@
+---
+// Side-panel (desktop) / bottom-sheet (mobile) for Speakers to claim a slot
+// AND marry a suggestion to it in one click. Embedded once per page; opens
+// when any element dispatches a `schedule-suggestion` custom event with
+// { detail: { suggestionId, suggestionTitle } }.
+//
+// Embedding pages should ALSO pass the slate context (slug + id) so the
+// panel knows which slate's open slots to fetch.
+
+interface Props {
+  slate: { id: string; slug: string; name: string };
+}
+
+const { slate } = Astro.props;
+---
+
+<div
+  id="schedule-panel-root"
+  data-slate-id={slate.id}
+  data-slate-slug={slate.slug}
+  data-state="closed"
+  class="hidden fixed inset-0 z-50"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="schedule-panel-title"
+>
+  <div id="schedule-panel-backdrop"
+       class="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-200"></div>
+
+  <aside
+    id="schedule-panel-pane"
+    class="absolute bg-base-100 shadow-2xl flex flex-col
+           bottom-0 inset-x-0 max-h-[85vh] rounded-t-xl translate-y-full
+           md:bottom-auto md:inset-x-auto md:top-0 md:right-0 md:h-full md:max-h-none md:w-[480px] md:rounded-none md:translate-x-full md:translate-y-0
+           transition-transform duration-200"
+  >
+    <header class="flex items-start gap-3 p-4 border-b border-base-300">
+      <div class="flex-1 min-w-0">
+        <p class="font-mono text-xs text-signal">// claim &amp; schedule</p>
+        <h2 id="schedule-panel-title" class="font-bold text-lg mt-1 truncate" data-suggestion-title>
+          (loading…)
+        </h2>
+      </div>
+      <button id="schedule-panel-close" type="button" aria-label="Close"
+              class="btn btn-ghost btn-sm btn-square -mr-1 -mt-1 shrink-0">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M6 6l12 12M6 18L18 6"/>
+        </svg>
+      </button>
+    </header>
+
+    <div class="flex-1 overflow-y-auto p-4">
+      <p class="text-xs opacity-60 mb-3">
+        Pick an upcoming slot. Selecting one claims it for you AND attaches this topic in a single step.
+      </p>
+
+      <div id="schedule-panel-loading" class="text-sm opacity-60 hidden">Loading slots…</div>
+      <div id="schedule-panel-empty" class="text-sm opacity-60 hidden">
+        No open slots in the upcoming window. Generate more from
+        <a href={`/${slate.slug}/admin/rules`} class="link">Scheduling rules</a>.
+      </div>
+      <ul id="schedule-panel-slots" class="space-y-2"></ul>
+      <p id="schedule-panel-status" class="text-sm mt-3 hidden"></p>
+    </div>
+  </aside>
+</div>
+
+<script is:inline>
+  (() => {
+    const root = document.getElementById('schedule-panel-root');
+    if (!root) return;
+    const slateId = root.dataset.slateId;
+    const slateSlug = root.dataset.slateSlug;
+    const pane = document.getElementById('schedule-panel-pane');
+    const backdrop = document.getElementById('schedule-panel-backdrop');
+    const titleEl = root.querySelector('[data-suggestion-title]');
+    const list = document.getElementById('schedule-panel-slots');
+    const loading = document.getElementById('schedule-panel-loading');
+    const empty = document.getElementById('schedule-panel-empty');
+    const status = document.getElementById('schedule-panel-status');
+    const closeBtn = document.getElementById('schedule-panel-close');
+
+    let activeSuggestionId = null;
+    let cachedSlots = null;
+    const isDesktop = () => matchMedia('(min-width: 768px)').matches;
+
+    function setStatus(msg, kind) {
+      if (!msg) { status.classList.add('hidden'); return; }
+      status.classList.remove('hidden', 'text-error', 'text-success');
+      if (kind) status.classList.add(`text-${kind}`);
+      status.textContent = msg;
+    }
+
+    function fmtSlot(slot, tz) {
+      const fmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, weekday: 'short', month: 'short', day: 'numeric',
+        hour: 'numeric', minute: '2-digit',
+      });
+      return `${fmt.format(new Date(slot.start_time * 1000))} ${tz}`;
+    }
+
+    function renderSlots(payload) {
+      list.innerHTML = '';
+      empty.classList.toggle('hidden', payload.slots.length > 0);
+      for (const s of payload.slots) {
+        const li = document.createElement('li');
+        const ownPill = s.mine
+          ? '<span class="badge badge-xs badge-primary ml-2">your slot · pick a topic</span>'
+          : `<span class="badge badge-xs badge-ghost ml-2">${s.status}</span>`;
+        li.innerHTML = `
+          <button data-slot-id="${s.id}" type="button"
+                  class="schedule-pick w-full text-left p-3 border border-base-300 rounded hover:border-signal transition-colors">
+            <div class="font-mono text-sm">${fmtSlot(s, payload.timezone)}</div>
+            <div class="text-xs opacity-70 mt-1">${ownPill} · ${s.duration_minutes}m</div>
+          </button>`;
+        list.appendChild(li);
+      }
+      list.querySelectorAll('.schedule-pick').forEach(btn => {
+        btn.addEventListener('click', () => pickSlot(btn.dataset.slotId, btn));
+      });
+    }
+
+    async function open(suggestionId, suggestionTitle) {
+      activeSuggestionId = suggestionId;
+      titleEl.textContent = suggestionTitle ?? 'Schedule…';
+      setStatus('');
+      root.classList.remove('hidden');
+      // Force reflow so the next class change animates
+      void pane.offsetWidth;
+      pane.classList.remove('translate-y-full', 'md:translate-x-full');
+      backdrop.classList.remove('opacity-0');
+      root.dataset.state = 'open';
+      document.body.style.overflow = 'hidden';
+
+      if (!cachedSlots) {
+        loading.classList.remove('hidden');
+        try {
+          const res = await fetch(`/api/slates/${slateId}/open-slots`);
+          if (!res.ok) throw new Error(`status ${res.status}`);
+          cachedSlots = await res.json();
+        } catch (err) {
+          setStatus('Couldn’t load slots. Refresh and try again.', 'error');
+          loading.classList.add('hidden');
+          return;
+        }
+        loading.classList.add('hidden');
+      }
+      renderSlots(cachedSlots);
+    }
+
+    function close() {
+      pane.classList.add(isDesktop() ? 'md:translate-x-full' : 'translate-y-full');
+      backdrop.classList.add('opacity-0');
+      setTimeout(() => {
+        root.classList.add('hidden');
+        root.dataset.state = 'closed';
+        document.body.style.overflow = '';
+      }, 200);
+    }
+
+    async function pickSlot(slotId, btn) {
+      btn.disabled = true;
+      setStatus('Scheduling…');
+      const res = await fetch(`/api/slots/${slotId}/claim-and-schedule`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ suggestion_id: activeSuggestionId }),
+      });
+      if (res.ok) {
+        // Plausible event so we can see how often this gets used
+        if (window.plausible) window.plausible('Schedule Suggestion', { props: { slate: slateSlug } });
+        setStatus('Scheduled. Reloading…', 'success');
+        setTimeout(() => location.reload(), 600);
+      } else {
+        btn.disabled = false;
+        const e = await res.json().catch(() => ({}));
+        setStatus(`Failed: ${e.error ?? res.status}`, 'error');
+      }
+    }
+
+    // Open on custom event from any suggestion card on the page
+    window.addEventListener('schedule-suggestion', (e) => {
+      const detail = e.detail ?? {};
+      open(detail.suggestionId, detail.suggestionTitle);
+    });
+
+    closeBtn.addEventListener('click', close);
+    backdrop.addEventListener('click', close);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && root.dataset.state === 'open') close();
+    });
+  })();
+</script>

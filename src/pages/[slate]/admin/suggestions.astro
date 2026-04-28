@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import ScheduleSuggestionPanel from '@/components/ScheduleSuggestionPanel.astro';
 import { getDb } from '@/lib/db';
 import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
 
@@ -67,6 +68,13 @@ const contribs = await db.prepare(
                     ))}
                   </div>
                 )}
+                {c.status === 'open' && (
+                  <button class="schedule-trigger btn btn-xs btn-primary mt-3"
+                          data-suggestion-id={c.id}
+                          data-suggestion-title={c.title}>
+                    Claim &amp; schedule
+                  </button>
+                )}
               </div>
               {c.status !== 'archived' && c.status !== 'scheduled' && (
                 <button data-id={c.id} data-status="archived"
@@ -83,6 +91,8 @@ const contribs = await db.prepare(
     </div>
   </section>
 
+  <ScheduleSuggestionPanel slate={{ id: slate.id, slug: slug!, name: slate.name }} />
+
   <script is:inline>
     document.querySelectorAll('.contrib-action').forEach(b => {
       b.addEventListener('click', async () => {
@@ -95,6 +105,17 @@ const contribs = await db.prepare(
         });
         if (res.ok) location.reload();
         else { b.disabled = false; alert((await res.json().catch(() => ({}))).error ?? res.status); }
+      });
+    });
+
+    document.querySelectorAll('.schedule-trigger').forEach(b => {
+      b.addEventListener('click', () => {
+        window.dispatchEvent(new CustomEvent('schedule-suggestion', {
+          detail: {
+            suggestionId: b.dataset.suggestionId,
+            suggestionTitle: b.dataset.suggestionTitle,
+          },
+        }));
       });
     });
   </script>

@@ -1,6 +1,7 @@
 ---
 import Layout from '@/layouts/Layout.astro';
 import ScheduleGrid from '@/components/ScheduleGrid';
+import ScheduleSuggestionPanel from '@/components/ScheduleSuggestionPanel.astro';
 import { getDb, getEnv } from '@/lib/db';
 import { isAppAdmin, signInUrl } from '@/lib/auth';
 
@@ -151,6 +152,13 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
                     ) : s.title}
                   </h3>
                   {s.description && <p class="text-sm opacity-80 mt-1 line-clamp-2">{s.description}</p>}
+                  {isSpeaker && s.status === 'open' && (
+                    <button class="schedule-trigger btn btn-xs btn-primary mt-2"
+                            data-suggestion-id={s.id}
+                            data-suggestion-title={s.title}>
+                      Claim &amp; schedule
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -159,6 +167,8 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
       </div>
     )}
   </section>
+
+  {isSpeaker && <ScheduleSuggestionPanel slate={{ id: slate.id, slug: slate.slug, name: slate.name }} />}
 
   <script is:inline define:vars={{ slateId: slate.id }}>
     const joinBtn = document.getElementById('join-btn');
@@ -183,6 +193,17 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
           alert((await res.json().catch(() => ({}))).error ?? res.status);
         }
         b.disabled = false;
+      });
+    });
+
+    document.querySelectorAll('.schedule-trigger').forEach(b => {
+      b.addEventListener('click', () => {
+        window.dispatchEvent(new CustomEvent('schedule-suggestion', {
+          detail: {
+            suggestionId: b.dataset.suggestionId,
+            suggestionTitle: b.dataset.suggestionTitle,
+          },
+        }));
       });
     });
   </script>

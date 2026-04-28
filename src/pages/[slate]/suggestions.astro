@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import ScheduleSuggestionPanel from '@/components/ScheduleSuggestionPanel.astro';
 import { getDb } from '@/lib/db';
 import { signInUrlForCtx, isAppAdmin } from '@/lib/auth';
 
@@ -21,6 +22,7 @@ const member = await db.prepare(
   'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
 ).bind(slate.id, user.id).first<{ role: string }>();
 if (!isAdmin && !member) return Astro.redirect(`/${slug}/join`);
+const isSpeaker = isAdmin || member?.role === 'speaker';
 
 const url = new URL(Astro.request.url);
 const status = url.searchParams.get('status') ?? 'open';
@@ -84,6 +86,13 @@ const suggestions = await db.prepare(
                     ))}
                   </div>
                 )}
+                {isSpeaker && s.status === 'open' && (
+                  <button class="schedule-trigger btn btn-xs btn-primary mt-3"
+                          data-suggestion-id={s.id}
+                          data-suggestion-title={s.title}>
+                    Claim &amp; schedule
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -93,6 +102,8 @@ const suggestions = await db.prepare(
 
     <p class="mt-8 text-sm"><a href={`/${slug}`} class="link">← Back to schedule</a></p>
   </section>
+
+  {isSpeaker && <ScheduleSuggestionPanel slate={{ id: slate.id, slug: slug!, name: slate.name }} />}
 
   <script is:inline>
     document.querySelectorAll('.upvote').forEach(b => {
@@ -110,6 +121,17 @@ const suggestions = await db.prepare(
           alert((await res.json().catch(() => ({}))).error ?? res.status);
         }
         b.disabled = false;
+      });
+    });
+
+    document.querySelectorAll('.schedule-trigger').forEach(b => {
+      b.addEventListener('click', () => {
+        window.dispatchEvent(new CustomEvent('schedule-suggestion', {
+          detail: {
+            suggestionId: b.dataset.suggestionId,
+            suggestionTitle: b.dataset.suggestionTitle,
+          },
+        }));
       });
     });
   </script>
