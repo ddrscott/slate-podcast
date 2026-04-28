@@ -1,0 +1,145 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getDb } from '@/lib/db';
+import { signInUrlForCtx, isAppAdmin } from '@/lib/auth';
+
+export const prerender = false;
+
+const slug = Astro.params.slate;
+if (!slug) return new Response('Not found', { status: 404 });
+
+const db = getDb(Astro);
+const slate = await db.prepare('SELECT id, name FROM slates WHERE slug = ?').bind(slug)
+  .first<{ id: string; name: string }>();
+if (!slate) return new Response('Not found', { status: 404 });
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/suggest`));
+
+if (!isAppAdmin(user.scopes)) {
+  const m = await db.prepare(
+    'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
+  ).bind(slate.id, user.id).first<{ role: string }>();
+  if (!m) return Astro.redirect(`/${slug}/join`);
+}
+---
+
+<Layout title={`Suggest a topic · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+  <section class="py-8 max-w-2xl">
+    <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
+    <h1 class="text-2xl font-bold">Suggest a topic</h1>
+    <p class="opacity-75 mt-2 text-sm">
+      Add an idea to the pool. Speakers pick from the most-upvoted suggestions when filling slots.
+    </p>
+
+    <form id="suggest-form" class="mt-6 space-y-3">
+      <label class="form-control">
+        <span class="label-text">Title</span>
+        <input id="title-input" name="title" required maxlength="200"
+               class="input input-bordered" placeholder="What's the topic?" autocomplete="off" />
+      </label>
+      <div id="dup-warning" class="hidden alert alert-warning"></div>
+
+      <label class="form-control">
+        <span class="label-text">Why is it good? (optional)</span>
+        <textarea name="description" rows="4" maxlength="2000"
+                  class="textarea textarea-bordered" placeholder="A few sentences on what makes this worth covering."></textarea>
+      </label>
+
+      <label class="form-control">
+        <span class="label-text">Source URL (optional)</span>
+        <input name="url" type="url" maxlength="500" class="input input-bordered" placeholder="https://…" />
+      </label>
+
+      <label class="form-control">
+        <span class="label-text">Tags (comma-separated, optional)</span>
+        <input name="tags" maxlength="200" class="input input-bordered font-mono" />
+      </label>
+
+      <div class="flex gap-2">
+        <button type="submit" class="btn btn-primary">Submit</button>
+        <a href={`/${slug}/suggestions`} class="btn btn-ghost border border-base-300">Browse pool</a>
+      </div>
+      <p id="status" class="text-sm hidden"></p>
+    </form>
+  </section>
+
+  <script is:inline define:vars={{ slateId: slate.id, slug }}>
+    const form = document.getElementById('suggest-form');
+    const titleInput = document.getElementById('title-input');
+    const dupWarning = document.getElementById('dup-warning');
+    const status = document.getElementById('status');
+
+    let dupTimer;
+    titleInput.addEventListener('input', () => {
+      clearTimeout(dupTimer);
+      dupTimer = setTimeout(async () => {
+        const t = titleInput.value.trim();
+        if (t.length < 4) { dupWarning.classList.add('hidden'); return; }
+        const res = await fetch(`/api/slates/${slateId}/suggestions/check?title=${encodeURIComponent(t)}`);
+        if (!res.ok) return;
+        const body = await res.json();
+        const matches = body.matches ?? [];
+        if (matches.length === 0) { dupWarning.classList.add('hidden'); return; }
+        dupWarning.classList.remove('hidden');
+        dupWarning.innerHTML = `<div><strong>Looks similar to:</strong><ul class="mt-1 space-y-1">${
+          matches.map(m => `<li>· <a href="/${slug}/suggestions" class="link">${escapeHtml(m.title)}</a> <span class="opacity-60 font-mono text-xs">▲ ${m.upvote_count}</span></li>`).join('')
+        }</ul><p class="text-xs mt-2 opacity-75">Consider voting on the existing one instead — or submit anyway if yours is genuinely different.</p></div>`;
+      }, 400);
+    });
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = new FormData(form);
+      status.classList.remove('hidden', 'text-error', 'text-success');
+      status.textContent = 'Submitting…';
+
+      let res = await fetch(`/api/slates/${slateId}/suggestions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: data.get('title'),
+          description: data.get('description') || null,
+          url: data.get('url') || null,
+          tags: data.get('tags') || null,
+        }),
+      });
+
+      if (res.status === 409) {
+        const body = await res.json();
+        const dup = body.duplicate;
+        if (confirm(`This looks like a duplicate of: "${dup.title}" (${dup.upvote_count} upvotes). Submit anyway?`)) {
+          res = await fetch(`/api/slates/${slateId}/suggestions?force=1`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              title: data.get('title'),
+              description: data.get('description') || null,
+              url: data.get('url') || null,
+              tags: data.get('tags') || null,
+            }),
+          });
+        } else {
+          status.classList.add('text-success');
+          status.textContent = 'Cancelled. Tip: upvote the existing suggestion instead.';
+          return;
+        }
+      }
+
+      if (res.ok) {
+        status.classList.add('text-success');
+        status.textContent = 'Submitted. Thanks!';
+        form.reset();
+        dupWarning.classList.add('hidden');
+      } else {
+        const e = await res.json().catch(() => ({}));
+        status.classList.add('text-error');
+        status.textContent = `Failed: ${e.error ?? res.status}`;
+      }
+    });
+  </script>
+</Layout>

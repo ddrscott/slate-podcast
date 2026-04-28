@@ -1,0 +1,149 @@
+-- Slate v2 — Speakers, Members, Suggestions, Upvotes (D1 / SQLite)
+-- Apply: `npm run db:apply:local` or `npm run db:apply:remote`
+
+PRAGMA foreign_keys = ON;
+
+-- ─── Identity ──────────────────────────────────────────────────────────────
+-- Delegated to auth.ljs.app. `id` is the userId issued by auth.ljs.app,
+-- stored as-is on first sign-in. `email` is cached for fast lookup.
+-- `headshot_url` is the public URL of the user's uploaded profile image (R2).
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  headshot_url TEXT
+);
+
+-- ─── Slate ─────────────────────────────────────────────────────────────────
+-- Top-level. Created by App Admins (anyone with the auth.ljs.app `admin` or
+-- `slate:admin` JWT scope). Slug is globally unique and mutable — change it
+-- to a hard-to-guess string for soft privacy.
+CREATE TABLE IF NOT EXISTS slates (
+  id TEXT PRIMARY KEY,
+  slug TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  timezone TEXT NOT NULL DEFAULT 'America/Chicago',
+  is_public INTEGER NOT NULL DEFAULT 1,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_slates_slug ON slates(slug);
+
+-- ─── Slate membership ──────────────────────────────────────────────────────
+-- Open signup as 'member' via /[slate]/join. Promotion to 'speaker' is
+-- App-Admin only. A user has at most one role per slate (speaker > member).
+CREATE TABLE IF NOT EXISTS slate_members (
+  slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('member','speaker')),
+  joined_at INTEGER NOT NULL,
+  promoted_at INTEGER,
+  promoted_by TEXT REFERENCES users(id),
+  PRIMARY KEY (slate_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_slate_members_user ON slate_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_slate_members_slate_role ON slate_members(slate_id, role);
+
+-- ─── Recurrence rules ──────────────────────────────────────────────────────
+-- Speakers (or App Admins) configure these per slate. Slot generation
+-- combines all active rules and is idempotent via UNIQUE(slate_id, start_time).
+CREATE TABLE IF NOT EXISTS slot_rules (
+  id TEXT PRIMARY KEY,
+  slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
+  name TEXT,
+  cadence TEXT NOT NULL CHECK (cadence IN ('weekly','monthly')),
+  days_of_week TEXT,
+  nth_weekday TEXT,
+  time_of_day TEXT NOT NULL,
+  duration_minutes INTEGER NOT NULL,
+  start_date TEXT NOT NULL,
+  end_date TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_slot_rules_slate ON slot_rules(slate_id, active);
+
+-- ─── Slots ────────────────────────────────────────────────────────────────
+-- Status lifecycle:
+--   open      → no speaker yet
+--   assigned  → speaker_id set, no topic yet
+--   confirmed → speaker_id + suggestion_id both set
+--   recorded  → speaker marked recorded
+--   published → show notes published
+--   cancelled → coordinator killed it
+-- Speakers can boot each other off (overwrite speaker_id).
+CREATE TABLE IF NOT EXISTS slots (
+  id TEXT PRIMARY KEY,
+  slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
+  rule_id TEXT REFERENCES slot_rules(id) ON DELETE SET NULL,
+  start_time INTEGER NOT NULL,
+  duration_minutes INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open'
+    CHECK (status IN ('open','assigned','confirmed','recorded','published','cancelled')),
+  speaker_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  suggestion_id TEXT REFERENCES suggestions(id) ON DELETE SET NULL,
+  custom_title TEXT,
+  notes_internal TEXT,
+  show_notes TEXT,
+  show_notes_published_at INTEGER,
+  promo_image_url TEXT,            -- public R2 URL of the slot's social-share image
+  created_at INTEGER NOT NULL,
+  UNIQUE (slate_id, start_time)
+);
+CREATE INDEX IF NOT EXISTS idx_slots_slate_time ON slots(slate_id, start_time);
+CREATE INDEX IF NOT EXISTS idx_slots_status ON slots(slate_id, status);
+CREATE INDEX IF NOT EXISTS idx_slots_speaker ON slots(speaker_id);
+
+CREATE TABLE IF NOT EXISTS slot_assets (
+  id TEXT PRIMARY KEY,
+  slot_id TEXT NOT NULL REFERENCES slots(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('audio','video','transcript','image','link')),
+  url TEXT NOT NULL,
+  title TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_slot_assets_slot ON slot_assets(slot_id);
+
+-- ─── Suggestions ──────────────────────────────────────────────────────────
+-- Members and Speakers post suggestions; both can upvote.
+-- `fingerprint` is a normalized title for duplicate detection.
+-- `upvote_count` is denormalized — kept in sync at write time.
+-- `status` flips to 'scheduled' when a speaker marries it to a slot.
+CREATE TABLE IF NOT EXISTS suggestions (
+  id TEXT PRIMARY KEY,
+  slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
+  author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  url TEXT,
+  tags TEXT,
+  status TEXT NOT NULL DEFAULT 'open'
+    CHECK (status IN ('open','scheduled','archived')),
+  fingerprint TEXT NOT NULL,
+  upvote_count INTEGER NOT NULL DEFAULT 0,
+  scheduled_slot_id TEXT REFERENCES slots(id) ON DELETE SET NULL,
+  scheduled_at INTEGER,
+  scheduled_by TEXT REFERENCES users(id),
+  submitted_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_suggestions_slate_status ON suggestions(slate_id, status);
+CREATE INDEX IF NOT EXISTS idx_suggestions_slate_fp ON suggestions(slate_id, fingerprint);
+CREATE INDEX IF NOT EXISTS idx_suggestions_votes ON suggestions(slate_id, upvote_count DESC);
+
+CREATE TABLE IF NOT EXISTS suggestion_votes (
+  suggestion_id TEXT NOT NULL REFERENCES suggestions(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  voted_at INTEGER NOT NULL,
+  PRIMARY KEY (suggestion_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_votes_user ON suggestion_votes(user_id);
+
+-- ─── Reminder dedupe (cron worker) ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS sent_reminders (
+  slot_id TEXT NOT NULL REFERENCES slots(id) ON DELETE CASCADE,
+  reminder_kind TEXT NOT NULL CHECK (reminder_kind IN ('48h','24h')),
+  recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sent_at INTEGER NOT NULL,
+  PRIMARY KEY (slot_id, reminder_kind, recipient_user_id)
+);

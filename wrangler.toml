@@ -1,0 +1,44 @@
+name = "slate-podcast"
+main = "./dist/_worker.js/index.js"
+compatibility_date = "2025-01-09"
+compatibility_flags = ["nodejs_compat"]
+
+routes = [
+  { pattern = "slate.ljs.app", custom_domain = true }
+]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "slate-podcast"
+database_id = "f1d33343-8107-4e6a-bf97-aa9b6452a673"
+# Dev server (`npm run dev`) talks to the production D1 directly instead of
+# the local sqlite emulator. Trade-off: schema changes are live immediately,
+# any data we write while testing is real. Approved 2026-04-28.
+remote = true
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "slate-media"
+remote = true
+
+[vars]
+APP_BASE_URL = "https://slate.ljs.app"
+AUTH_BASE_URL = "https://auth.ljs.app"
+PLAUSIBLE_HOST = "plausible.ljs.app"
+
+# Secrets (set via `wrangler secret put`):
+#   JWT_SECRET         — same HMAC key as auth.ljs.app (so we can verify its tokens locally)
+#   RESEND_API_KEY     — same Resend account as auth.ljs.app
+#   RESEND_FROM        — e.g. "Slate <hello@ljs.app>" (reuses the verified ljs.app domain)
+#   CRON_SECRET        — bearer token required by /api/cron/reminders
+#
+# Reminder cron: configure an external scheduler (cron-job.org or Cloudflare
+# Cron Triggers in a separate Worker) to POST hourly to
+# https://slate.ljs.app/api/cron/reminders with header:
+#   Authorization: Bearer $CRON_SECRET
+# The endpoint is idempotent — duplicate calls inside the same hour are no-ops
+# thanks to the sent_reminders dedupe table.

@@ -1,0 +1,330 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import ShowNotesEditor from '@/components/ShowNotesEditor';
+import ShowNotesView from '@/components/ShowNotesView';
+import { getDb } from '@/lib/db';
+import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+
+export const prerender = false;
+
+const slug = Astro.params.slate;
+const slotId = Astro.params.id;
+if (!slug || !slotId) return new Response('Not found', { status: 404 });
+
+const db = getDb(Astro);
+const slate = await db.prepare(
+  `SELECT id, slug, name, timezone, is_public FROM slates WHERE slug = ?`,
+).bind(slug).first<{ id: string; slug: string; name: string; timezone: string; is_public: number }>();
+if (!slate || !slate.is_public) return new Response('Not found', { status: 404 });
+
+const slot = await db.prepare(
+  `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status,
+          sl.speaker_id, sl.suggestion_id, sl.custom_title,
+          sl.show_notes, sl.show_notes_published_at, sl.promo_image_url,
+          sug.title AS suggestion_title, sug.description AS suggestion_description,
+          spk.email AS speaker_email, spk.headshot_url AS speaker_headshot_url
+   FROM slots sl
+   LEFT JOIN suggestions sug ON sug.id = sl.suggestion_id
+   LEFT JOIN users spk ON spk.id = sl.speaker_id
+   WHERE sl.id = ? AND sl.slate_id = ?`,
+).bind(slotId, slate.id).first<any>();
+if (!slot) return new Response('Slot not found', { status: 404 });
+
+const assets = await db.prepare(
+  `SELECT id, kind, url, title, sort_order FROM slot_assets WHERE slot_id = ? ORDER BY sort_order, created_at`,
+).bind(slot.id).all<{ id: string; kind: 'audio'|'video'|'transcript'|'image'|'link'; url: string; title: string | null; sort_order: number }>();
+
+const fmtDate = new Intl.DateTimeFormat('en-US', { timeZone: slate.timezone, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+const fmtTime = new Intl.DateTimeFormat('en-US', { timeZone: slate.timezone, hour: 'numeric', minute: '2-digit' });
+const startMs = slot.start_time * 1000;
+const endMs = startMs + slot.duration_minutes * 60_000;
+
+const user = Astro.locals.user;
+const member = user ? await db.prepare(
+  `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string }>() : null;
+
+const isSpeaker = (member?.role === 'speaker') || isAppAdmin(user?.scopes);
+const isSlotOwner = user && slot.speaker_id === user.id;
+const canEditNotes = isSlotOwner || isSpeaker;
+const canPublish = isSpeaker;
+const canEditPromo = isSlotOwner || isSpeaker;
+const isPublished = !!slot.show_notes_published_at;
+const displayTitle = slot.custom_title ?? slot.suggestion_title ?? null;
+
+// Per-slot OG meta. If a promo image is uploaded, point at it directly so
+// social platforms unfurl with that art. Otherwise fall back to the slate's
+// generated SVG card.
+const slotUrl = `${new URL(Astro.request.url).origin}/${slug}/slot/${slot.id}`;
+const ogTitle = displayTitle ? `${displayTitle} · ${slate.name}` : `${fmtDate.format(new Date(startMs))} · ${slate.name}`;
+const ogDesc = slot.suggestion_description
+  ?? `${fmtDate.format(new Date(startMs))} at ${fmtTime.format(new Date(startMs))} ${slate.timezone}${slot.speaker_email ? ` — with ${slot.speaker_email}` : ''}.`;
+const ogImg = slot.promo_image_url ?? undefined;
+
+// Available open suggestions (for the topic picker, when speaker)
+const availableSuggestions = isSpeaker ? await db.prepare(
+  `SELECT id, title, upvote_count FROM suggestions
+   WHERE slate_id = ? AND status = 'open' ORDER BY upvote_count DESC LIMIT 20`,
+).bind(slate.id).all<{ id: string; title: string; upvote_count: number }>() : { results: [] };
+---
+
+<Layout
+  title={`${fmtDate.format(new Date(startMs))} · ${slate.name}`}
+  slate={{ name: slate.name, slug: slate.slug }}
+  ogImage={ogImg}
+  ogDescription={ogDesc}
+>
+  <section class="py-8 max-w-3xl">
+    <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
+    <h1 class="text-3xl font-bold">{fmtDate.format(new Date(startMs))}</h1>
+    <p class="opacity-75 mt-1 font-mono text-sm flex flex-wrap items-center gap-2">
+      <span>{fmtTime.format(new Date(startMs))} – {fmtTime.format(new Date(endMs))} {slate.timezone}</span>
+      <span class="opacity-50">·</span>
+      <span class="badge badge-outline badge-sm">{slot.status}</span>
+      {slot.speaker_id && (
+        <>
+          <span class="opacity-50">·</span>
+          <span class="flex items-center gap-1.5">
+            {slot.speaker_headshot_url
+              ? <img src={slot.speaker_headshot_url} alt="" class="w-5 h-5 rounded-full object-cover" />
+              : <span class="w-5 h-5 rounded-full bg-base-200 inline-flex items-center justify-center text-[10px] font-bold opacity-70">{slot.speaker_email.charAt(0).toUpperCase()}</span>}
+            <span class="opacity-70">{slot.speaker_email}</span>
+          </span>
+        </>
+      )}
+    </p>
+
+    {/* Promo image (uploaded by speaker). Shown at the top of the page so the
+        slot URL self-promotes. Doubles as the social-share image. */}
+    {slot.promo_image_url && (
+      <div class="mt-6 rounded overflow-hidden border border-base-300">
+        <img src={slot.promo_image_url} alt={displayTitle ?? 'Episode promo'} class="w-full h-auto" />
+      </div>
+    )}
+
+    {/* Share controls — visible to anyone. */}
+    <div class="mt-4 flex flex-wrap gap-2 text-sm">
+      <button id="copy-link-btn" data-url={slotUrl} class="btn btn-sm btn-ghost border border-base-300 plausible-event-name=Copy+Slot+Link">📋 Copy share link</button>
+      <a target="_blank" rel="noopener" class="btn btn-sm btn-ghost border border-base-300 plausible-event-name=Share+Slot+Twitter"
+         href={`https://twitter.com/intent/tweet?text=${encodeURIComponent((displayTitle ?? slate.name) + ' on ' + slate.name + ' · ')}&url=${encodeURIComponent(slotUrl)}`}>𝕏 Share</a>
+      <a target="_blank" rel="noopener" class="btn btn-sm btn-ghost border border-base-300 plausible-event-name=Share+Slot+Facebook"
+         href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(slotUrl)}`}>Facebook</a>
+      <span id="copy-status" class="text-xs opacity-70 self-center hidden"></span>
+    </div>
+
+    {displayTitle && (
+      <div class="mt-6 card bg-base-200 border border-base-300">
+        <div class="card-body">
+          <h2 class="card-title text-xl">{displayTitle}</h2>
+          {slot.suggestion_description && <p class="mt-2">{slot.suggestion_description}</p>}
+        </div>
+      </div>
+    )}
+
+    {/* Promo image upload widget (speakers only) */}
+    {canEditPromo && (
+      <div class="mt-6 card bg-base-100 border border-base-300">
+        <div class="card-body py-4">
+          <h2 class="card-title text-base">Promo image</h2>
+          <p class="text-xs opacity-60 mb-2">
+            Shown on this page and as the preview when the slot URL is shared.
+            Recommended: 1200×630, JPEG/PNG/WebP, &lt; 5 MB.
+          </p>
+          <div class="flex flex-wrap gap-2 items-center">
+            <label class="btn btn-sm btn-primary cursor-pointer">
+              <input id="promo-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
+              {slot.promo_image_url ? 'Replace' : 'Upload'}
+            </label>
+            {slot.promo_image_url && (
+              <button id="promo-remove" class="btn btn-sm btn-ghost border border-base-300 text-error">Remove</button>
+            )}
+            <span id="promo-status" class="text-xs opacity-70"></span>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Speaker controls */}
+    {isSpeaker && (
+      <div class="mt-6 card bg-base-100 border border-signal">
+        <div class="card-body">
+          <h2 class="card-title text-base">Speaker controls</h2>
+          <div class="flex flex-wrap gap-2">
+            {!slot.speaker_id && (
+              <button id="claim-btn" class="btn btn-primary btn-sm">Claim this slot</button>
+            )}
+            {slot.speaker_id && !isSlotOwner && (
+              <button id="boot-btn" class="btn btn-warning btn-sm">Boot {slot.speaker_email} & take it</button>
+            )}
+            {isSlotOwner && (
+              <button id="release-btn" class="btn btn-ghost btn-sm border border-base-300">Release the slot</button>
+            )}
+          </div>
+
+          {slot.speaker_id && (
+            <div class="mt-4">
+              <label class="label-text">Topic</label>
+              <select id="topic-select" class="select select-bordered w-full max-w-xl mt-1">
+                <option value="">— No topic —</option>
+                {availableSuggestions.results.map(s => (
+                  <option value={s.id} selected={slot.suggestion_id === s.id}>
+                    ▲{s.upvote_count} · {s.title}
+                  </option>
+                ))}
+                {slot.suggestion_id && !availableSuggestions.results.some(s => s.id === slot.suggestion_id) && (
+                  <option value={slot.suggestion_id} selected>{slot.suggestion_title} (current)</option>
+                )}
+              </select>
+              <input id="custom-title" class="input input-bordered w-full max-w-xl mt-2" placeholder="Custom title (optional, overrides suggestion title)" value={slot.custom_title ?? ''} maxlength="200" />
+              <button id="topic-save" class="btn btn-primary btn-sm mt-2">Save topic</button>
+            </div>
+          )}
+
+          <p id="speaker-status" class="text-sm hidden"></p>
+        </div>
+      </div>
+    )}
+
+    {/* Public-facing show notes (only when published) */}
+    {slot.show_notes && isPublished && (
+      <section class="mt-8">
+        <h2 class="text-xl font-bold mb-3">Show notes</h2>
+        <ShowNotesView client:load markdown={slot.show_notes} />
+        {assets.results.length > 0 && (
+          <div class="mt-4">
+            <h3 class="text-sm font-semibold opacity-80 mb-2">Resources</h3>
+            <ul class="space-y-1">
+              {assets.results.map(a => (
+                <li class="text-sm flex items-center gap-2">
+                  <span class="badge badge-xs badge-outline font-mono">{a.kind}</span>
+                  <a href={a.url} target="_blank" rel="noopener noreferrer" class="link">{a.title ?? a.url}</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+    )}
+
+    {/* Editor for slot owner / any speaker / app admin */}
+    {canEditNotes && (
+      <section class="mt-8 card bg-base-100 border border-base-300">
+        <div class="card-body">
+          <h2 class="card-title text-base">Show notes editor</h2>
+          <ShowNotesEditor
+            client:only="react"
+            slotId={slot.id}
+            initialMarkdown={slot.show_notes}
+            initialPublished={isPublished}
+            initialAssets={assets.results}
+            canPublish={canPublish}
+          />
+        </div>
+      </section>
+    )}
+
+    {!user && slot.status === 'open' && (
+      <div class="mt-8 card bg-base-200 border border-base-300">
+        <div class="card-body">
+          <p class="text-sm">Sign in to interact with this slot.</p>
+          <a href={signInUrlForCtx(Astro, `/${slug}/slot/${slot.id}`)} class="btn btn-primary btn-sm w-fit">Sign In / Sign Up</a>
+        </div>
+      </div>
+    )}
+
+    <p class="mt-8 text-sm"><a href={`/${slug}`} class="link">← Back to schedule</a></p>
+  </section>
+
+  <script is:inline define:vars={{ slotId: slot.id }}>
+    const status = document.getElementById('speaker-status');
+    function setStatus(msg, kind) {
+      if (!status) return;
+      status.classList.remove('hidden', 'text-error', 'text-success');
+      if (kind) status.classList.add(`text-${kind}`);
+      status.textContent = msg;
+    }
+
+    document.getElementById('claim-btn')?.addEventListener('click', async () => {
+      setStatus('Claiming…');
+      const res = await fetch(`/api/slots/${slotId}/assign-speaker`, { method: 'POST' });
+      if (res.ok) location.reload();
+      else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
+    });
+    document.getElementById('boot-btn')?.addEventListener('click', async () => {
+      if (!confirm("Boot the current speaker and take this slot?")) return;
+      setStatus('Booting…');
+      const res = await fetch(`/api/slots/${slotId}/assign-speaker`, { method: 'POST' });
+      if (res.ok) location.reload();
+      else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
+    });
+    document.getElementById('release-btn')?.addEventListener('click', async () => {
+      if (!confirm("Release this slot? It'll go back to open.")) return;
+      setStatus('Releasing…');
+      const res = await fetch(`/api/slots/${slotId}/assign-speaker`, { method: 'DELETE' });
+      if (res.ok) location.reload();
+      else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
+    });
+    document.getElementById('topic-save')?.addEventListener('click', async () => {
+      const sel = document.getElementById('topic-select');
+      const custom = document.getElementById('custom-title');
+      setStatus('Saving topic…');
+      const res = await fetch(`/api/slots/${slotId}/topic`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          suggestion_id: sel.value || null,
+          custom_title: custom.value || null,
+        }),
+      });
+      if (res.ok) location.reload();
+      else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
+    });
+
+    // ── Copy share-link ────────────────────────────────────────────────────
+    const copyBtn = document.getElementById('copy-link-btn');
+    const copyStatus = document.getElementById('copy-status');
+    copyBtn?.addEventListener('click', async () => {
+      const url = copyBtn.dataset.url;
+      try {
+        await navigator.clipboard.writeText(url);
+        copyStatus.classList.remove('hidden', 'text-error');
+        copyStatus.classList.add('text-success');
+        copyStatus.textContent = 'Copied!';
+        setTimeout(() => copyStatus.classList.add('hidden'), 2000);
+      } catch {
+        copyStatus.classList.remove('hidden');
+        copyStatus.classList.add('text-error');
+        copyStatus.textContent = 'Couldn’t copy — select the URL manually.';
+      }
+    });
+
+    // ── Promo image upload ─────────────────────────────────────────────────
+    const promoInput = document.getElementById('promo-input');
+    const promoRemove = document.getElementById('promo-remove');
+    const promoStatus = document.getElementById('promo-status');
+    function setPromoStatus(msg, kind) {
+      if (!promoStatus) return;
+      promoStatus.classList.remove('text-error', 'text-success');
+      if (kind) promoStatus.classList.add(`text-${kind}`);
+      promoStatus.textContent = msg;
+    }
+    promoInput?.addEventListener('change', async () => {
+      const file = promoInput.files?.[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) { setPromoStatus('File too large (max 5 MB).', 'error'); return; }
+      setPromoStatus('Uploading…');
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`/api/slots/${slotId}/promo-image`, { method: 'POST', body: fd });
+      if (res.ok) { setPromoStatus('Saved.', 'success'); setTimeout(() => location.reload(), 600); }
+      else { const e = await res.json().catch(() => ({})); setPromoStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
+    });
+    promoRemove?.addEventListener('click', async () => {
+      if (!confirm('Remove this promo image?')) return;
+      setPromoStatus('Removing…');
+      const res = await fetch(`/api/slots/${slotId}/promo-image`, { method: 'DELETE' });
+      if (res.ok) location.reload();
+      else { const e = await res.json().catch(() => ({})); setPromoStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
+    });
+  </script>
+</Layout>

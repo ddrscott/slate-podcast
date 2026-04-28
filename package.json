@@ -1,0 +1,45 @@
+{
+  "name": "slate-podcast",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Slate — multi-tenant podcast slot manager with Coordinator/Creator/Contributor roles",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build && echo '_worker.js' > dist/.assetsignore && echo '_routes.json' >> dist/.assetsignore",
+    "preview": "wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "astro": "astro",
+    "typecheck": "astro check",
+    "db:create": "wrangler d1 create slate-podcast",
+    "db:apply:local": "wrangler d1 execute slate-podcast --local --file=./schema.sql",
+    "db:apply:remote": "wrangler d1 execute slate-podcast --remote --file=./schema.sql",
+    "db:query:local": "wrangler d1 execute slate-podcast --local --command",
+    "db:query:remote": "wrangler d1 execute slate-podcast --remote --command"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^12.2.0",
+    "@astrojs/react": "^4.2.1",
+    "@astrojs/tailwind": "^6.0.0",
+    "@uiw/react-md-editor": "^4.0.5",
+    "ag-grid-community": "^32.3.5",
+    "ag-grid-react": "^32.3.5",
+    "astro": "^5.4.2",
+    "daisyui": "^4.12.23",
+    "hono": "^4.6.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.3",
+    "rehype-sanitize": "^6.0.0",
+    "resend": "^4.1.2",
+    "tailwindcss": "^3.4.17"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.8",
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "typescript": "^5.7.3",
+    "wrangler": "^4.86.0"
+  }
+}

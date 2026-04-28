@@ -1,0 +1,104 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getDb } from '@/lib/db';
+import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+
+export const prerender = false;
+
+const slug = Astro.params.slate;
+if (!slug) return new Response('Not found', { status: 404 });
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/admin/settings`));
+
+const db = getDb(Astro);
+const slate = await db.prepare(
+  `SELECT id, slug, name, description, timezone, is_public FROM slates WHERE slug = ?`,
+).bind(slug).first<{ id: string; slug: string; name: string; description: string | null; timezone: string; is_public: number }>();
+if (!slate) return new Response('Not found', { status: 404 });
+
+const member = await db.prepare(
+  'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
+).bind(slate.id, user.id).first<{ role: string }>();
+if (!isAppAdmin(user.scopes) && member?.role !== 'speaker') {
+  return new Response('Speaker required', { status: 403 });
+}
+---
+
+<Layout title={`Settings · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+  <section class="py-8 max-w-2xl">
+    <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
+    <h1 class="text-2xl font-bold">Slate settings</h1>
+    <p class="opacity-75 text-sm mt-1 mb-6">
+      Changing the slug breaks the old public URL — useful for soft privacy.
+    </p>
+
+    <form id="settings-form" class="space-y-4">
+      <label class="form-control">
+        <span class="label-text">Name</span>
+        <input name="name" required maxlength="120" class="input input-bordered" value={slate.name} />
+      </label>
+      <label class="form-control">
+        <span class="label-text">Slug (URL identifier)</span>
+        <input name="slug" required maxlength="64" class="input input-bordered font-mono"
+               pattern="[a-z0-9][a-z0-9-]*" value={slate.slug} />
+        <span class="text-xs opacity-60 mt-1">Public URL: <code>/{slate.slug}</code></span>
+      </label>
+      <label class="form-control">
+        <span class="label-text">Description</span>
+        <textarea name="description" rows="3" maxlength="1000" class="textarea textarea-bordered">{slate.description ?? ''}</textarea>
+      </label>
+      <label class="form-control">
+        <span class="label-text">Timezone</span>
+        <select name="timezone" required class="select select-bordered">
+          {['America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Phoenix','America/Anchorage','Pacific/Honolulu','UTC','Europe/London','Europe/Berlin','Australia/Sydney'].map(tz => (
+            <option value={tz} selected={tz === slate.timezone}>{tz}</option>
+          ))}
+        </select>
+      </label>
+      <label class="flex items-center gap-2">
+        <input type="checkbox" name="is_public" class="checkbox" checked={slate.is_public === 1} />
+        <span class="label-text">Public — schedule visible to anyone with the URL</span>
+      </label>
+      <button type="submit" class="btn btn-primary">Save</button>
+      <p id="status" class="text-sm hidden"></p>
+    </form>
+
+    <p class="mt-6 text-sm"><a href={`/${slug}/admin`} class="link">← Slate admin</a></p>
+  </section>
+
+  <script is:inline define:vars={{ slateId: slate.id, currentSlug: slate.slug }}>
+    const form = document.getElementById('settings-form');
+    const status = document.getElementById('status');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = new FormData(form);
+      const newSlug = data.get('slug');
+      status.classList.remove('hidden', 'text-error', 'text-success');
+      status.textContent = 'Saving…';
+      const res = await fetch(`/api/slates/${slateId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: data.get('name'),
+          slug: newSlug,
+          description: data.get('description') || null,
+          timezone: data.get('timezone'),
+          is_public: form.querySelector('[name=is_public]').checked,
+        }),
+      });
+      if (res.ok) {
+        if (newSlug !== currentSlug) {
+          location.href = `/${newSlug}/admin/settings`;
+        } else {
+          status.classList.add('text-success');
+          status.textContent = 'Saved.';
+        }
+      } else {
+        const e = await res.json().catch(() => ({}));
+        status.classList.add('text-error');
+        status.textContent = `Failed: ${e.error ?? res.status}`;
+      }
+    });
+  </script>
+</Layout>

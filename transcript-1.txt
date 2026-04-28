@@ -1,0 +1,229 @@
+Jacob
+00:00
+Us every other week, and it'll be on. It'll be on Mondays at like 7:00 p.m. Central, okay, right? But it'll only be every other Monday, and so it'd be nice if, like. When I open it up.
+J
+Jacob
+00:14
+Like the only options that show up to me are the only options I can select like Mondays. Yep. Um, and that doesn't mean that. Like, like, we're gonna so I don't know if there's another way to do this, but I am flexible with the other guys around us. Like, I want us to be able to be like, oh, hey, Jacob can't make it on Monday, so somebody else is just gonna fill in at that time slot, right?
+00:39
+But I don't know how to make that without, like messing up the programming. Um, maybe, like? Uh, have, like a fill-in option like these, you could have like the the fill-in option at the top, or like. Uh, however, you wanted to label it, and then other than that. Like, if you have like a drop down menu, it's like, okay, I have the fill in, and then I have the dates that are coming up that are my normal schedule.
+01:06
+Right, right? Yep, yep, I don't know. That's just, so I don't know. Maybe there's a better way? I'm just kind of in telling you what looks like, right? In my head, you know, yep, yeah, I think, even just having the, you know, this conversation around it is, what's?
+S
+Scott
+01:22
+Is what I need the most, so the the idea that it's like AI, like, you need, you know, all the things to do, but you need the end and the beginning, right? Exactly, exactly! I am AI, the first. Um, but basically, that's the idea is that each of the content creators they'll, um?
+J
+Jacob
+01:47
+They'll have their, uh, their their own time slots, um. And when they select like? A like a, a recommended show topic. They cannot. They can then say schedule. And then it'll only show those options, um. To schedule, and then when they schedule it. It'll then go to that other screen, you know.
+02:09
+It's, like, oh, this is the thing you can share that says, you know, Jacob Miller, my my show is going to be called, uh, it's going to be called, uh.
+02:22
+I'm blanking out right now, um? Send something and this, and uh, it's like, really cool, and I forgot it. But anyways, um, will our own show, and the show will be titled as such, and
+S
+Scott
+02:38
+then
+J
+Jacob
+02:38
+basically like it'll have that title with whatever the modified or basic?
+02:48
+Meme. Advertisement looks like, and we can automatically share it. Got it, got it.
+S
+Scott
+02:57
+Yeah,
+J
+Jacob
+02:57
+you know what I mean. Yeah, I think
+S
+Scott
+03:01
+the the like, the image and promotion, and like having kind of like this cool online schedule for the public. Uh, that that's gonna be the easy stuff. The the hard thing and the place where I'm at least clear. Is? Yeah, they're like the the content creator or the person, the person who's doing the talk.
+03:28
+And the control that the other role of people suggesting ideas. Yeah, so essentially, we don't. We want scheduling. To be only available. Think of it this way, right, like, um? The only people who can affect the schedule are the content creators. Yep, are the speakers?
+J
+Jacob
+03:50
+Correct, okay, but the other users they're going to be able to recommend stuff to put in like ideas and links for that, and then explain why they think it's good, you know, and then we can just look through the explanations. And then, once we select it, it'll go on the schedule, you know, got
+S
+Scott
+04:09
+it. Yep, people upvot a thing, and then you can queue up whatever you want on that slide code is a great idea. I didn't think about that, like, like people are upvoting each other's ideas. I like that, yeah. Yeah, um, that's really gamify this. Yeah, and um. But yeah, that's that's really it.
+04:29
+I don't really have a big. An idea. Other than that, like it'd be cool if somehow this calendar. Um.
+J
+Jacob
+04:39
+I don't know. That's like going one step deep that. I don't know if it's even like, simple, uh, but I'll explain it anyways, I guess. Yeah, if, like, there was a calendar on our social media like Instagram, every time somebody added something, it just reposted it. Yeah,
+S
+Scott
+04:53
+with all
+J
+Jacob
+04:54
+the new episodes. Yeah,
+S
+Scott
+04:55
+like
+J
+Jacob
+04:56
+automatically reposts it on Instagram, automatically reposts it on. Um, Facebook on Twitter, and when it does that, it'll put beneath it the new action that's been added. Whatever it is, you know, yeah, so it's like a picture of the new calendar. And then. Like puts the description underneath. Like, we can even control that, like, we'll, we can see it.
+05:21
+It'll be automatically filled in, but we can review it and like, maybe make changes or whatever, right? Yeah, um. Is that very easy or doable? It vary. It's doable and pretty easy.
+S
+Scott
+05:37
+Okay, so I, I like for me. The. So, like the promotion and connecting outward that, like, what's what's happening is the easy part like that, like publishing? That. That's like website publishing 101 and social media.
+J
+Jacob
+05:58
+Okay,
+S
+Scott
+05:58
+marketing 101, the the hard part is corralling and. The idea of the speaker, so I'm going to call it a speaker just because that makes more sense in my head that you have a speaker who's doing the show. And they're gonna pick a grab bag and kind of, uh, yeah, they're gonna, you're gonna pick a grab bag of suggestions from.
+06:23
+Suggesters from the public, okay, or right. And then, uh. Once those two are married, so a Creator then says, hey, I'm gonna do this on my slot, then that gets plotted onto a shared calendar. Um, which is also very standard thing to do. And then, once things, once you get closer to that calendar date, you can blast post.
+06:49
+That date everywhere, right? So, that's. Um. Yeah, and then that's basically how it would work so. Like the the building blocks of this. You know, part calendar part matchmaking, which is Creator to idea and then part crowdsourcing, which is, uh, idea Gathering from the crowd. Right, right? Easy, but I don't want to do is.
+07:21
+And this is probably obvious, but I'm gonna say it anyways, because I just don't want the obvious to.
+J
+Jacob
+07:28
+Not, um, which is, I know, basically, the Creator. I have administrative control like they should be able to. This default settings for themselves. Does that make sense? Uh, so you broke up just a little bit. Something about creators having administrative control? Yeah, so the creators of this right should have full control over the app.
+07:54
+So if somebody makes a suggestion like, like, so they should be able to go in and make suggestions, of course. But yeah, the creator has the Creator is what I keep calling it. The speaker has full control over everything, right? But The other ones, the providers or the the curators or whatever you call it, like they only.
+08:14
+Basically, they can only view the calendar. Yes, the public, the public. They can only view it. Um, but they can provide sources and recommendations suggestions on the side. Comment constantly. Yes, I, I 100 get what you're getting at. In the future. Here's one thing that I'm thinking of, like, in the in the possible future, and maybe this is just an administrative thing you can add in as a checkbox that I'll add in the future.
+08:43
+Like, I don't if we're gonna have, like 100 users. I want 100 active users. I don't want people who are like. Perusing and like, not providing something, you know? Uh, I mean that. That's statistics, right? So? Because are you gonna boot out the people who've been inactive? I get, well, you know what?
+09:06
+Now that you bring it up? Um.
+09:11
+Now that I'm thinking through it a little more. Um, I do want people to be able to provide, but if we're going to have like an upload down vote system, I want more than the providers to be able to upvote stuff.
+09:27
+You know what, I mean, yeah, so more so, we have to.
+S
+Scott
+09:31
+Let's just solidify our language, so we have speakers that that are also admins. Or, and you can call them creators, so I, I, I struggle with Creator and contributor just because they're pretty much synonyms for. For me, in my head. Um, okay, gotcha, right? Because? That everyone creates something.
+09:54
+Yeah, so you have admins, who are the speakers? And. They they can do. Pretty much anything they want. Great, so that they can adjust their skit. They have their own schedules. They can, uh, of what their openings are, and they can. Pick spots in the calendar. Whether that's spots restricted by their own schedule or filling in for others, right?
+10:24
+Because there's there's just in general, a slate calendar that has to be filled by one or more. Speakers. Okay, so correct, you're gonna pick a spot. And then, once you pick a spot, you're gonna marry it to a topic. So they pick a grab bag of topics. Now you know a spot is taken when there's a speaker on it with a topic then that that spot is the speakers until another speaker Boots them off for whatever reason.
+10:56
+Um, right? And then, so that's this. The speakers roll the admins role is to to organize that calendar. Then you have just users or members of the. The the show? Right, and these members are the ones that can post suggestions. And, and that's really about it. They can post suggestions and see the schedule.
+11:26
+And and possibly upvote wrote it down vote. Yeah, and and that's. Pretty much it, you can. We can. You know, add a, uh? A user. Uh, white list. You know that you have to be accepted so you can put in your email, but you don't have access until someone grants it to you, you know, another speaker.
+11:44
+And then, if you were to give me a list of? Uh, speakers, email addresses, then I can, you know? I can rudge it. I can pre-register them as admins. Uh, and. Then they have an interface in at least a couple days. Yeah, and, and I can certainly do it for you.
+12:05
+And I'll be an admin initially, just so I can see my own work, um. But that'll then let me kind of manage your calendar. Uh, and I'll do it in the. You know in a way that I envision would work because you know, if I'm gonna manage my own podcast or schedule, like, here's what I would have to do so I'll make it at least work for my.
+12:29
+My brain, and then you'll eventually see how it works in your brain, and then you know I can have whomever. Uh, just sign in to the site and. It, you know, and just grant them user access. To make suggestions, and so on. Cool and, and, uh. Um,
+J
+Jacob
+12:51
+this is gonna be a weird question, but um. I'm like, thinking about convenience for everybody, right? Um, let's say that, like, we get all the way to the end. We've got everything solidified, whatever. Um, it doesn't just become like an Apple app, right? It
+S
+Scott
+13:10
+doesn't become an Apple app. This is so, I'm asking if it does right, does it become like an app available on the App Store for free or something? No, so this. Most of my apps are just websites. So, um, so it's just a link and, and I do this in a couple ways.
+13:33
+So, um? The lowest friction way is I use what's called a unique link, so maybe I'll do, you know, maybe I'll register? Some domain. And well, here, I'll tell you the domain that it's at right now. I'm just gonna it's gonna be my company website, which is. Uh, well, sir, let me rephrase this.
+13:57
+The website is going to be slate.ljs.app. So, slate is, I guess what, AI believes is a common word for a calendar of of scheduled programs. Uh, so I thought it was a cool name, so slate.ljs.app. Ljs is my company name, which is left, join studio, and then dot. App is where I host on my apps, uh, gotcha, but it'll be like slate.ljs.app slash.
+14:29
+Some garbly. Gook thing that you would never be able to type. Right, so that way you have to pass in, you have to. You have to copy paste that link to someone to to have them get to it. Sure, right? And then, that's. And then, that's would be kind of the.
+14:46
+Uh, the user experience of just, you know, getting to a slate? And seeing what the schedule is. Right, and then being able to. And then, if they were to sign up from that URL, then they can post, uh, suggestions, and upvote down vote. Okay, cool, and then if somebody were to go into that, you know, sign up.
+15:07
+And then I grant them admin, you access. Then they would have access to the admin privileges right to be a speaker, and so on and so forth. Here. Yep, and that that's exactly how it work. And then, if they were to open that on their phone, it would just work from their phone.
+15:24
+Um, and and all my user authentication is through, uh, what's known as magic email. So I just email you. To that address, and then when you? Punch in the code back into the app. You're logged in.
+J
+Jacob
+15:40
+Oh, cool!
+S
+Scott
+15:40
+Yep,
+J
+Jacob
+15:41
+sounds simple that, yeah, okay, uh, is there anything any other questions you had, or does that kind of
+S
+Scott
+15:47
+that pretty much that that pretty much covers it. Um, I just so, you know, I recorded this conversation so I can get notes out of it, uh, because I didn't record the past one. But yeah, that'll allow me then digest all these features that we just talked about. And I have, uh, Russell always says.
+J
+Jacob
+16:08
+Just like, always tell the truth and say things, you mean, so that it doesn't matter if anybody ever records you. It's just like it's a world where people record things like get used to it. Well, exactly, and guess what, God always hears you, so he knows your heart, right?
+16:26
+Amen. Amen! Great. So.
+S
+Scott
+16:29
+That that is pretty much it this, so I already got like, really, really far into this. Believe it or not, um? Okay, and I just had a couple of these things where, like. I really don't want to take this the wrong direction. Um, so it's good to know that, like, what the recording schedule is going to be?
+16:47
+And yeah, like, this split role was really good to discuss because? Knowing what an admin speaker is, and knowing how you'd want. Uh, you know, non-admins. They interact with it, and so on. And anyway, there's good stuff. I'd like to call those roles, uh, just for the general public.
+J
+Jacob
+17:07
+Cut like content creator okay, and the other role contributor.
+17:17
+And maybe that changes in the future, but for now, that's just what makes sense to me. How about a fan? How about another word. Like, because because I guess contributor is so similar in just in my head. And Creator are the same thing to me.
+S
+Scott
+17:36
+Okay, let's see what. What would you recommend? Like, I'm a contributor, I would say, maybe like a member or a fan. A a um? Uh, Patron. There's something more, I mean, I, I dare use the generic word. It's a user.
+J
+Jacob
+17:57
+I'll take. I'll take Patron, even though nobody's paying for it when I think of Patron. I think somebody's paying for something, but that's just because patreon took over. Yeah, um.
+S
+Scott
+18:09
+Uh, there's more. There's more words here. Come on, let's. Let's English this, uh? Uh,
+J
+Jacob
+18:15
+I I, cuz cuz they're providing sources they're providing, like, um, content. They're they're, they're it's. They're providing such suggestion suggestions, right? Like, that's really, what? Yeah. Uh, editors.
+S
+Scott
+18:34
+That's kind of like the Reddit thing, no? Um. We can just go with member for now. Will you just call them members? That's that's good for now. And if I think of something along the way, I will, uh, we'll talk about it more okay. Yeah, and that's it's easy to change.
+18:51
+It's. It. Yeah, right. It's easy enough to change it and in the back end, the data structure is going to be called nothing that we've already talked about. So, uh? But in presentation, none of that stuff matters. Yeah, yep. Yep. Uh,
+J
+Jacob
+19:09
+that's a good friend of mine who's, uh, he's he's in coding, and he does back end coding. He's a super passionate nerd, I'm sure, just like you, you know, yeah. And he's like, I hate doing front end stuff, but this back end stuff, that's all that's all in my in in his wheelhouse.
+19:27
+So, yeah, yeah. I, I like both ends, because because nothing works without the other. It's like, yeah, that's for sure. He, he gets that. He just doesn't like it. That's all. Yeah. Yep, yep.
+S
+Scott
+19:40
+Okay, cool. I'm glad I reached you. I was gonna jump into the other talks. I'm like, man. If I go into the general room with everyone else, we'll never get this through. Um, boy, howdy, uh. And, and by the way, I, I've talked to Eric Seeley a bunch. Today, I'm going to talk to him in a little bit here.
+19:59
+Uh,
+J
+Jacob
+19:59
+oh, nice, yeah. So, we're Eric Felix, man. That is another guy that when you talk with him, you're gonna be like, blown away, like the man is so passionate and very knowledgeable and wise. And, uh, I love, I love Eric. Yeah, yeah, he's. He's more. What do I put he's more passionate than I am?
+20:23
+And I'm a pretty passionate person. Um, and I, I wish I had the passion he has. But yeah, anyways. Amazing! Well, so, so far my assessment is you're. You're both equally passionate and, and uh. I appreciate that.
+S
+Scott
+20:42
+Cool, uh, well, I will. I'll send you an invite pretty soon here, guys, say again. I'm going to talk to the other guys about using it and. Uh, get their emails so great, great. Okay. Yep, bye.

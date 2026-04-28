@@ -1,0 +1,47 @@
+---
+import Layout from '@/layouts/Layout.astro';
+export const prerender = false;
+---
+
+<Layout title="Privacy · Slate" description="Privacy notice for slate.ljs.app">
+  <article class="prose max-w-2xl mx-auto py-8">
+    <p class="font-mono text-sm text-signal m-0 mb-2">// privacy</p>
+    <h1>What we collect, what we don't, and why.</h1>
+
+    <p>The short version: we collect your email address when you sign in, and we use it to let you sign in and to occasionally tell you about the project. We don't sell it. We don't share it. We don't track you across the web.</p>
+
+    <h2>Information we collect</h2>
+    <ul>
+      <li><strong>Your email address</strong> — passed to us by <code>auth.ljs.app</code> after you click a magic link. Cached locally so we can attribute your suggestions, votes, and slot assignments.</li>
+      <li><strong>A session cookie</strong> after sign-in (HttpOnly, SameSite=Lax). Holds the JWT issued by <code>auth.ljs.app</code> so we know it's still you on the next page.</li>
+      <li><strong>Your activity within Slate</strong> — slates you join, suggestions you post, votes you cast, slots you claim, show notes you write. This is the data the app needs to function.</li>
+      <li><strong>Standard server logs</strong> (request paths, timestamps, error traces) to keep the service running.</li>
+    </ul>
+
+    <h2>How we use it</h2>
+    <ul>
+      <li>To let you sign in and resume sessions.</li>
+      <li>To send slot reminders 48h and 24h before episodes you're scheduled to record (Speakers only).</li>
+      <li>To occasionally email registered users about substantive changes or new features. Infrequent.</li>
+    </ul>
+
+    <h2>What we do not do</h2>
+    <ul>
+      <li>We do not sell your email or activity data to anyone.</li>
+      <li>We do not share it with advertisers.</li>
+      <li>We do not use third-party analytics that profile you across sites.</li>
+      <li>We do not retain anything we don't actively need.</li>
+    </ul>
+
+    <h2>Your data, your control</h2>
+    <p>You can request deletion of your account and your contributed data at any time. Email <a href="https://askscottpierce.com" target="_blank" rel="noopener">Scott Pierce</a> directly. Suggestions tied to scheduled episodes may stay attached to those episode pages with attribution; everything else can be wiped.</p>
+
+    <h2>Third parties</h2>
+    <p>The site runs on <strong>Cloudflare</strong> (Workers, D1, Pages). Authentication is handled by our shared <strong><code>auth.ljs.app</code></strong> service, which sends magic-link emails via <strong>Resend</strong>. Slot reminders and other transactional email also go via Resend. We run our own self-hosted <strong>Plausible Analytics</strong> at <code>plausible.ljs.app</code> for aggregate page-view counts — it's cookieless, doesn't profile you across sites, and we don't share its data. None of these vendors are sold your data; they're tools we use to operate the service.</p>
+
+    <h2>Public visibility</h2>
+    <p>By default, a Slate's schedule and published show notes are <strong>public</strong> at <code>slate.ljs.app/{`{slate}`}</code>. Suggestion contents are visible to anyone who's a Member of the Slate, alongside the email of whoever posted them. App Admins and Speakers see all activity within their Slates.</p>
+
+    <p class="text-sm opacity-60 border-t border-base-300 pt-4 mt-8">If anything here changes substantively, we'll email registered users before the change takes effect.</p>
+  </article>
+</Layout>

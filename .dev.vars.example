@@ -1,0 +1,10 @@
+# Copy to .dev.vars and fill in for local dev.
+# These map to the secrets set via `wrangler secret put` in production.
+#
+# JWT_SECRET MUST be the same value as auth.ljs.app's `JWT_SECRET` —
+# Slate verifies auth.ljs.app's tokens locally with this shared HMAC key.
+
+JWT_SECRET=PASTE_AUTH_LJS_APP_JWT_SECRET_HERE
+RESEND_API_KEY=re_xxx_local_only
+RESEND_FROM=Slate <hello@ljs.app>
+CRON_SECRET=dev-only-cron-secret

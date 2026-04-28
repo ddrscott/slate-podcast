@@ -1,0 +1,134 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getDb } from '@/lib/db';
+import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, '/admin/people'));
+if (!isAppAdmin(user.scopes)) return new Response('App-Admin required', { status: 403 });
+
+const db = getDb(Astro);
+const slates = await db.prepare('SELECT id, slug, name FROM slates ORDER BY name')
+  .all<{ id: string; slug: string; name: string }>();
+
+const memberships = await db.prepare(
+  `SELECT m.slate_id, m.role, m.joined_at, m.promoted_at,
+          s.slug AS slate_slug, s.name AS slate_name,
+          u.id AS user_id, u.email
+   FROM slate_members m
+   JOIN slates s ON s.id = m.slate_id
+   JOIN users u ON u.id = m.user_id
+   ORDER BY s.name, (m.role = 'speaker') DESC, u.email`,
+).all<any>();
+
+const allUsers = await db.prepare('SELECT id, email FROM users ORDER BY email').all<{ id: string; email: string }>();
+
+// Group memberships by slate
+const bySlate = new Map<string, any[]>();
+for (const m of memberships.results) {
+  const arr = bySlate.get(m.slate_id) ?? [];
+  arr.push(m);
+  bySlate.set(m.slate_id, arr);
+}
+---
+
+<Layout title="App admin · people">
+  <section class="py-8 max-w-4xl">
+    <p class="font-mono text-sm text-signal mb-1">// app admin</p>
+    <h1 class="text-2xl font-bold">People</h1>
+    <p class="text-sm opacity-75 mt-1 mb-6">Promote any user to Speaker on any slate. Only App Admins see this page.</p>
+
+    <div class="card bg-base-200 border border-base-300 mb-8">
+      <div class="card-body">
+        <h2 class="card-title text-base">Promote to Speaker</h2>
+        <form id="promote-form" class="grid md:grid-cols-3 gap-3 items-end">
+          <label class="form-control">
+            <span class="label-text">Slate</span>
+            <select name="slate_id" required class="select select-bordered">
+              {slates.results.map(s => <option value={s.id}>{s.name} (/{s.slug})</option>)}
+            </select>
+          </label>
+          <label class="form-control md:col-span-2">
+            <span class="label-text">User email</span>
+            <input name="email" type="email" required list="user-emails" class="input input-bordered" placeholder="user@example.com" />
+            <datalist id="user-emails">
+              {allUsers.results.map(u => <option value={u.email}></option>)}
+            </datalist>
+          </label>
+          <button type="submit" class="btn btn-primary">Promote</button>
+          <p id="promote-status" class="text-sm hidden md:col-span-3"></p>
+        </form>
+      </div>
+    </div>
+
+    {slates.results.map(s => (
+      <div class="mb-6">
+        <h3 class="font-semibold flex items-baseline gap-2">
+          <span>{s.name}</span>
+          <a href={`/${s.slug}`} class="font-mono text-xs opacity-60 link">/{s.slug}</a>
+        </h3>
+        <ul class="mt-2 space-y-1">
+          {(bySlate.get(s.id) ?? []).map(m => (
+            <li class="flex items-center gap-2 text-sm p-2 border border-base-300 rounded">
+              <span class={`badge badge-xs ${m.role === 'speaker' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>
+              <span class="flex-1 font-mono">{m.email}</span>
+              {m.role === 'speaker' && (
+                <button class="demote btn btn-xs btn-ghost text-error border border-base-300"
+                        data-slate-id={m.slate_id} data-user-id={m.user_id}>demote</button>
+              )}
+              {m.role === 'member' && (
+                <button class="promote-quick btn btn-xs btn-primary"
+                        data-slate-id={m.slate_id} data-user-id={m.user_id}>promote</button>
+              )}
+            </li>
+          ))}
+          {(bySlate.get(s.id) ?? []).length === 0 && (
+            <li class="text-xs opacity-60">No members yet.</li>
+          )}
+        </ul>
+      </div>
+    ))}
+  </section>
+
+  <script is:inline>
+    document.getElementById('promote-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = new FormData(e.target);
+      const status = document.getElementById('promote-status');
+      status.classList.remove('hidden', 'text-error', 'text-success');
+      status.textContent = 'Promoting…';
+      const res = await fetch(`/api/slates/${data.get('slate_id')}/speakers`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: data.get('email') }),
+      });
+      if (res.ok) location.reload();
+      else { const e = await res.json().catch(() => ({})); status.classList.add('text-error'); status.textContent = `Failed: ${e.error ?? res.status}`; }
+    });
+
+    document.querySelectorAll('.promote-quick').forEach(b => {
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        const res = await fetch(`/api/slates/${b.dataset.slateId}/speakers`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ user_id: b.dataset.userId }),
+        });
+        if (res.ok) location.reload();
+        else { b.disabled = false; alert((await res.json().catch(() => ({}))).error ?? res.status); }
+      });
+    });
+
+    document.querySelectorAll('.demote').forEach(b => {
+      b.addEventListener('click', async () => {
+        if (!confirm("Demote this Speaker back to Member?")) return;
+        b.disabled = true;
+        const res = await fetch(`/api/slates/${b.dataset.slateId}/speakers/${b.dataset.userId}`, { method: 'DELETE' });
+        if (res.ok) location.reload();
+        else { b.disabled = false; alert((await res.json().catch(() => ({}))).error ?? res.status); }
+      });
+    });
+  </script>
+</Layout>

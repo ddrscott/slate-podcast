@@ -1,0 +1,189 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import ScheduleGrid from '@/components/ScheduleGrid';
+import { getDb, getEnv } from '@/lib/db';
+import { isAppAdmin, signInUrl } from '@/lib/auth';
+
+export const prerender = false;
+
+const slug = Astro.params.slate;
+if (!slug) return new Response('Not found', { status: 404 });
+
+const db = getDb(Astro);
+const slate = await db.prepare(
+  `SELECT id, slug, name, description, timezone, is_public FROM slates WHERE slug = ?`,
+).bind(slug).first<{ id: string; slug: string; name: string; description: string | null; timezone: string; is_public: number }>();
+
+if (!slate) return new Response('Not found', { status: 404 });
+if (!slate.is_public) return new Response('Private slate', { status: 403 });
+
+// Slots window: roughly the next ~3 months from "today" (UTC) — covers
+// "current + next month" reliably across timezones, with a buffer for tz drift.
+const nowSec = Math.floor(Date.now() / 1000);
+const horizonSec = nowSec + 95 * 86400;
+const slots = await db.prepare(
+  `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status,
+          COALESCE(sl.custom_title, sug.title) AS title,
+          u.email AS speaker_email
+   FROM slots sl
+   LEFT JOIN suggestions sug ON sug.id = sl.suggestion_id
+   LEFT JOIN users u ON u.id = sl.speaker_id
+   WHERE sl.slate_id = ? AND sl.status != 'cancelled'
+   AND sl.start_time >= ? AND sl.start_time < ?
+   ORDER BY sl.start_time`,
+).bind(slate.id, nowSec - 86400, horizonSec).all<{ id: string; start_time: number; duration_minutes: number; status: string; title: string | null; speaker_email: string | null }>();
+
+const slotsForGrid = slots.results.map(s => ({
+  id: s.id,
+  start_time: s.start_time,
+  duration_minutes: s.duration_minutes,
+  status: s.status as any,
+  theme: null,
+  title: s.title,
+}));
+
+const user = Astro.locals.user;
+const member = user ? await db.prepare(
+  `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string }>() : null;
+const isMember = !!member;
+const isSpeaker = member?.role === 'speaker' || isAppAdmin(user?.scopes);
+
+// Top suggestions to feature on this page (open + scheduled, sorted by votes).
+const topSuggestions = await db.prepare(
+  `SELECT s.id, s.title, s.description, s.url, s.upvote_count, s.status,
+          (SELECT 1 FROM suggestion_votes v WHERE v.suggestion_id = s.id AND v.user_id = ?) AS has_voted
+   FROM suggestions s
+   WHERE s.slate_id = ? AND s.status IN ('open','scheduled')
+   ORDER BY s.upvote_count DESC, s.submitted_at DESC LIMIT 6`,
+).bind(user?.id ?? '', slate.id).all<{ id: string; title: string; description: string | null; url: string | null; upvote_count: number; status: string; has_voted: number | null }>();
+
+const env = getEnv(Astro);
+const url = new URL(Astro.request.url);
+const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
+---
+
+<Layout title={`${slate.name} · slate.ljs.app`} description={slate.description ?? undefined} slate={{ name: slate.name, slug: slate.slug }}>
+  <section class="py-6">
+    <h1 class="text-3xl md:text-4xl font-bold tracking-tight">{slate.name}</h1>
+    {slate.description && <p class="opacity-80 mt-2 max-w-prose">{slate.description}</p>}
+
+    <div class="flex flex-wrap gap-2 mt-4">
+      {!user && (
+        <a href={signInHref} class="btn btn-primary btn-sm">Sign In / Sign Up</a>
+      )}
+      {user && !isMember && (
+        <button id="join-btn" class="btn btn-primary btn-sm">Join as Member</button>
+      )}
+      {isMember && <span class="badge badge-success badge-outline">{member?.role}</span>}
+      {isMember && (
+        <>
+          <a href={`/${slate.slug}/suggest`} class="btn btn-primary btn-sm">+ Suggest a topic</a>
+          <a href={`/${slate.slug}/suggestions`} class="btn btn-ghost btn-sm border border-base-300">All suggestions →</a>
+        </>
+      )}
+      {isSpeaker && (
+        <a href={`/${slate.slug}/admin`} class="btn btn-ghost btn-sm border border-base-300">Speaker admin →</a>
+      )}
+    </div>
+  </section>
+
+  <section class="py-4">
+    <div class="flex items-baseline justify-between mb-3">
+      <h2 class="text-xl font-bold">Upcoming</h2>
+      <span class="text-xs opacity-60 font-mono">current + next month</span>
+    </div>
+    <ScheduleGrid
+      client:load
+      slots={slotsForGrid}
+      timezone={slate.timezone}
+      slateSlug={slate.slug}
+      view="window"
+    />
+  </section>
+
+  <section class="py-8">
+    <div class="flex items-baseline justify-between mb-3">
+      <h2 class="text-xl font-bold">Top topic suggestions</h2>
+      {isMember && (
+        <a href={`/${slate.slug}/suggestions`} class="link text-sm opacity-75">view all →</a>
+      )}
+    </div>
+
+    {topSuggestions.results.length === 0 ? (
+      <div class="card bg-base-200 border border-base-300">
+        <div class="card-body">
+          <p class="text-sm opacity-70">
+            No suggestions yet.
+            {isMember
+              ? <> <a href={`/${slate.slug}/suggest`} class="link">Be the first to suggest a topic →</a></>
+              : !user
+                ? <> <a href={signInHref} class="link">Sign in</a> to add the first one.</>
+                : <> <a href={`/${slate.slug}/join`} class="link">Join as a Member</a> to add the first one.</>}
+          </p>
+        </div>
+      </div>
+    ) : (
+      <div class="grid md:grid-cols-2 gap-3">
+        {topSuggestions.results.map(s => (
+          <div class={`card border ${s.has_voted ? 'border-signal' : 'border-base-300'} bg-base-100`}>
+            <div class="card-body py-3">
+              <div class="flex items-start gap-3">
+                {isMember ? (
+                  <button class="upvote btn btn-sm btn-ghost flex-col h-auto py-1 border border-base-300"
+                          data-id={s.id}>
+                    <span class={s.has_voted ? 'text-signal' : 'opacity-60'}>▲</span>
+                    <span class="font-mono text-xs">{s.upvote_count}</span>
+                  </button>
+                ) : (
+                  <div class="flex-col text-center text-xs opacity-60 px-2 py-1 border border-base-300 rounded">
+                    <div>▲</div>
+                    <div class="font-mono">{s.upvote_count}</div>
+                  </div>
+                )}
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 text-xs">
+                    <span class={`badge badge-xs ${s.status === 'open' ? 'badge-success' : 'badge-primary'}`}>{s.status}</span>
+                  </div>
+                  <h3 class="font-semibold text-base mt-1 truncate">
+                    {s.url ? (
+                      <a href={s.url} target="_blank" rel="noopener noreferrer" class="link">{s.title}</a>
+                    ) : s.title}
+                  </h3>
+                  {s.description && <p class="text-sm opacity-80 mt-1 line-clamp-2">{s.description}</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </section>
+
+  <script is:inline define:vars={{ slateId: slate.id }}>
+    const joinBtn = document.getElementById('join-btn');
+    joinBtn?.addEventListener('click', async () => {
+      joinBtn.disabled = true;
+      const res = await fetch(`/api/slates/${slateId}/join`, { method: 'POST' });
+      if (res.ok) location.reload();
+      else { joinBtn.disabled = false; alert((await res.json().catch(() => ({}))).error ?? res.status); }
+    });
+
+    document.querySelectorAll('.upvote').forEach(b => {
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        const res = await fetch(`/api/suggestions/${b.dataset.id}/vote`, { method: 'POST' });
+        if (res.ok) {
+          const body = await res.json();
+          b.querySelector('span:first-child').className = body.has_voted ? 'text-signal' : 'opacity-60';
+          b.querySelector('span:last-child').textContent = body.upvote_count;
+          b.parentElement.parentElement.parentElement.parentElement.className =
+            `card border ${body.has_voted ? 'border-signal' : 'border-base-300'} bg-base-100`;
+        } else {
+          alert((await res.json().catch(() => ({}))).error ?? res.status);
+        }
+        b.disabled = false;
+      });
+    });
+  </script>
+</Layout>

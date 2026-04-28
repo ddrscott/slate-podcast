@@ -1,0 +1,87 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getDb } from '@/lib/db';
+import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+
+export const prerender = false;
+
+const slug = Astro.params.slate;
+if (!slug) return new Response('Not found', { status: 404 });
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/admin`));
+
+const db = getDb(Astro);
+const slate = await db.prepare(
+  `SELECT id, slug, name, description, timezone FROM slates WHERE slug = ?`,
+).bind(slug).first<{ id: string; slug: string; name: string; description: string | null; timezone: string }>();
+if (!slate) return new Response('Not found', { status: 404 });
+
+const isAdmin = isAppAdmin(user.scopes);
+const member = await db.prepare(
+  'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
+).bind(slate.id, user.id).first<{ role: string }>();
+const isSpeaker = isAdmin || member?.role === 'speaker';
+if (!isSpeaker) return new Response('Speaker required', { status: 403 });
+
+const counts = await db.prepare(
+  `SELECT
+     (SELECT COUNT(*) FROM slot_rules WHERE slate_id = ? AND active = 1) AS active_rules,
+     (SELECT COUNT(*) FROM slots WHERE slate_id = ?) AS total_slots,
+     (SELECT COUNT(*) FROM slots WHERE slate_id = ? AND status = 'open') AS open_slots,
+     (SELECT COUNT(*) FROM slots WHERE slate_id = ? AND status = 'confirmed') AS confirmed_slots,
+     (SELECT COUNT(*) FROM slots WHERE slate_id = ? AND status = 'assigned') AS assigned_slots,
+     (SELECT COUNT(*) FROM suggestions WHERE slate_id = ? AND status = 'open') AS open_suggestions,
+     (SELECT COUNT(*) FROM slate_members WHERE slate_id = ?) AS members,
+     (SELECT COUNT(*) FROM slate_members WHERE slate_id = ? AND role = 'speaker') AS speakers`,
+).bind(slate.id, slate.id, slate.id, slate.id, slate.id, slate.id, slate.id, slate.id)
+  .first<Record<string, number>>();
+
+const stats = [
+  { label: 'Active rules', value: counts?.active_rules ?? 0 },
+  { label: 'Total slots', value: counts?.total_slots ?? 0 },
+  { label: 'Open', value: counts?.open_slots ?? 0 },
+  { label: 'Assigned', value: counts?.assigned_slots ?? 0 },
+  { label: 'Confirmed', value: counts?.confirmed_slots ?? 0 },
+  { label: 'Open suggestions', value: counts?.open_suggestions ?? 0 },
+  { label: 'Members', value: counts?.members ?? 0 },
+  { label: 'Speakers', value: counts?.speakers ?? 0 },
+];
+
+const links = [
+  { href: `/${slug}/admin/rules`, title: 'Scheduling rules', subtitle: 'Define when slots happen' },
+  { href: `/${slug}/admin/slots`, title: 'Slots (sheet view)', subtitle: 'Bare-metal grid edit' },
+  { href: `/${slug}/admin/suggestions`, title: 'Moderate suggestions', subtitle: 'Archive duplicates / spam' },
+  { href: `/${slug}/admin/people`, title: 'People', subtitle: 'See members and speakers' },
+  { href: `/${slug}/admin/settings`, title: 'Slate settings', subtitle: 'Name, slug, timezone, visibility' },
+];
+---
+
+<Layout title={`Admin · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+  <section class="py-8">
+    <p class="font-mono text-sm text-signal mb-1">// {slate.slug} · {slate.timezone}</p>
+    <h1 class="text-3xl font-bold">{slate.name}</h1>
+    <p class="opacity-75 text-sm mt-1"><a href={`/${slug}`} class="link">public page →</a></p>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+      {stats.map(s => (
+        <div class="bg-base-200 border border-base-300 rounded p-4">
+          <div class="text-xs opacity-60 uppercase tracking-wide">{s.label}</div>
+          <div class="text-3xl font-bold leading-none mt-1">{s.value}</div>
+        </div>
+      ))}
+    </div>
+
+    <nav class="mt-8 grid md:grid-cols-2 gap-3">
+      {links.map(l => (
+        <a href={l.href} class="block p-4 bg-base-100 border border-base-300 rounded hover:border-signal transition-colors">
+          <div class="font-semibold flex items-center justify-between">
+            <span>{l.title}</span>
+            <span class="text-signal">→</span>
+          </div>
+          <div class="text-sm opacity-70 mt-1">{l.subtitle}</div>
+        </a>
+      ))}
+    </nav>
+  </section>
+</Layout>

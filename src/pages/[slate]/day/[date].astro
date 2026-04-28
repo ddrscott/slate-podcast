@@ -1,0 +1,62 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getDb } from '@/lib/db';
+
+export const prerender = false;
+
+const slug = Astro.params.slate;
+const date = Astro.params.date;
+if (!slug) return new Response('Not found', { status: 404 });
+if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) return new Response('Bad date', { status: 400 });
+
+const db = getDb(Astro);
+const slate = await db.prepare(
+  `SELECT id, name, timezone, is_public FROM slates WHERE slug = ?`,
+).bind(slug).first<{ id: string; name: string; timezone: string; is_public: number }>();
+if (!slate || !slate.is_public) return new Response('Not found', { status: 404 });
+
+const dayStartGuess = new Date(`${date}T00:00:00Z`).getTime() / 1000;
+const slots = await db.prepare(
+  `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status,
+          COALESCE(sl.custom_title, sug.title) AS title
+   FROM slots sl
+   LEFT JOIN suggestions sug ON sug.id = sl.suggestion_id
+   WHERE sl.slate_id = ? AND sl.start_time >= ? AND sl.start_time < ?
+   AND sl.status != 'cancelled' ORDER BY sl.start_time`,
+).bind(slate.id, dayStartGuess - 36 * 3600, dayStartGuess + 36 * 3600).all<{ id: string; start_time: number; duration_minutes: number; status: string; title: string | null }>();
+
+const fmtIso = new Intl.DateTimeFormat('en-CA', { timeZone: slate.timezone, year: 'numeric', month: '2-digit', day: '2-digit' });
+const fmtTime = new Intl.DateTimeFormat('en-US', { timeZone: slate.timezone, hour: 'numeric', minute: '2-digit' });
+const fmtDate = new Intl.DateTimeFormat('en-US', { timeZone: slate.timezone, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+const dayLabel = fmtDate.format(new Date(`${date}T12:00:00Z`));
+
+const dayMatches = slots.results.filter(s => fmtIso.format(new Date(s.start_time * 1000)) === date);
+---
+
+<Layout title={`${dayLabel} · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+  <section class="py-8 max-w-3xl">
+    <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
+    <h1 class="text-3xl font-bold">{dayLabel}</h1>
+
+    {dayMatches.length === 0 ? (
+      <p class="opacity-60 mt-6">No slots on this day.</p>
+    ) : (
+      <ul class="mt-6 space-y-2">
+        {dayMatches.map(s => (
+          <li>
+            <a href={`/${slug}/slot/${s.id}`}
+               class="block p-4 border border-base-300 rounded hover:border-signal transition-colors">
+              <div class="flex items-center justify-between">
+                <div class="font-mono">{fmtTime.format(new Date(s.start_time * 1000))}</div>
+                <span class="badge badge-outline badge-sm">{s.status}</span>
+              </div>
+              {s.title && <p class="text-sm mt-1">{s.title}</p>}
+            </a>
+          </li>
+        ))}
+      </ul>
+    )}
+
+    <p class="mt-8 text-sm"><a href={`/${slug}`} class="link">← Back to schedule</a></p>
+  </section>
+</Layout>

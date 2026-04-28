@@ -1,0 +1,71 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getDb } from '@/lib/db';
+import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, '/admin'));
+if (!isAppAdmin(user.scopes)) return new Response('App-Admin required', { status: 403 });
+
+const db = getDb(Astro);
+const slates = await db.prepare(
+  `SELECT s.id, s.slug, s.name, s.description, s.timezone, s.is_public, s.created_at,
+          (SELECT COUNT(*) FROM slate_members WHERE slate_id = s.id) AS members,
+          (SELECT COUNT(*) FROM slate_members WHERE slate_id = s.id AND role = 'speaker') AS speakers,
+          (SELECT COUNT(*) FROM slots WHERE slate_id = s.id AND status = 'open') AS open_slots,
+          (SELECT COUNT(*) FROM suggestions WHERE slate_id = s.id AND status = 'open') AS open_suggestions
+   FROM slates s ORDER BY s.created_at DESC`,
+).all();
+---
+
+<Layout title="Slate · admin">
+  <section class="py-8">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <p class="font-mono text-sm text-signal mb-1">// app admin</p>
+        <h1 class="text-3xl font-bold">All slates</h1>
+      </div>
+      <div class="flex gap-2">
+        <a href="/admin/slates/new" class="btn btn-primary">+ New slate</a>
+      </div>
+    </div>
+
+    {slates.results.length === 0 ? (
+      <div class="card bg-base-200 border border-base-300">
+        <div class="card-body">
+          <h2 class="card-title">No slates yet</h2>
+          <p>Create the first slate to get started.</p>
+          <div class="card-actions">
+            <a href="/admin/slates/new" class="btn btn-primary btn-sm">Create slate</a>
+          </div>
+        </div>
+      </div>
+    ) : (
+      <div class="space-y-3">
+        {slates.results.map((s: any) => (
+          <a href={`/${s.slug}/admin`}
+             class="block bg-base-100 border border-base-300 hover:border-signal rounded p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="flex items-center gap-2">
+                  <h2 class="font-bold text-lg">{s.name}</h2>
+                  {!s.is_public && <span class="badge badge-xs badge-ghost">private</span>}
+                </div>
+                <p class="text-xs font-mono opacity-60 mt-1">/{s.slug} · {s.timezone}</p>
+                {s.description && <p class="text-sm opacity-80 mt-2">{s.description}</p>}
+              </div>
+              <div class="text-right text-sm">
+                <div><span class="font-mono opacity-60">{s.members}</span> members</div>
+                <div><span class="font-mono opacity-60">{s.speakers}</span> speakers</div>
+                <div><span class="font-mono opacity-60">{s.open_slots}</span> open slots</div>
+                <div><span class="font-mono opacity-60">{s.open_suggestions}</span> open suggestions</div>
+              </div>
+            </div>
+          </a>
+        ))}
+      </div>
+    )}
+  </section>
+</Layout>

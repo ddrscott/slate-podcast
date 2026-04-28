@@ -1,0 +1,225 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getDb } from '@/lib/db';
+import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+
+export const prerender = false;
+
+const slug = Astro.params.slate;
+if (!slug) return new Response('Not found', { status: 404 });
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/admin/rules`));
+
+const db = getDb(Astro);
+const slate = await db.prepare('SELECT id, name, timezone FROM slates WHERE slug = ?').bind(slug)
+  .first<{ id: string; name: string; timezone: string }>();
+if (!slate) return new Response('Not found', { status: 404 });
+
+const member = await db.prepare(
+  'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
+).bind(slate.id, user.id).first<{ role: string }>();
+if (!isAppAdmin(user.scopes) && member?.role !== 'speaker') {
+  return new Response('Speaker required', { status: 403 });
+}
+
+const rules = await db.prepare(
+  `SELECT id, name, cadence, days_of_week, nth_weekday, time_of_day, duration_minutes,
+          start_date, end_date, active
+   FROM slot_rules WHERE slate_id = ? ORDER BY created_at`,
+).bind(slate.id).all();
+
+const todayInTz = new Intl.DateTimeFormat('en-CA', {
+  timeZone: slate.timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
+---
+
+<Layout title={`Rules · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+  <section class="py-8 max-w-4xl">
+    <p class="font-mono text-sm text-signal mb-1">// {slate.name} · {slate.timezone}</p>
+    <h1 class="text-2xl font-bold">Scheduling rules</h1>
+    <p class="opacity-75 text-sm mt-1 mb-6">Combine rules to mix cadences. Times resolve in the slate's timezone.</p>
+
+    <div class="card bg-base-200 border border-base-300 mb-6">
+      <div class="card-body">
+        <h2 class="card-title text-base">Add a rule</h2>
+        <form id="rule-form" class="space-y-3">
+          <div class="grid md:grid-cols-2 gap-3">
+            <label class="form-control">
+              <span class="label-text">Name (optional)</span>
+              <input name="name" class="input input-bordered" placeholder="Bi-weekly Monday evening" />
+            </label>
+            <label class="form-control">
+              <span class="label-text">Cadence</span>
+              <select name="cadence" id="cadence" class="select select-bordered">
+                <option value="weekly" selected>Weekly</option>
+                <option value="monthly">Monthly (nth weekday)</option>
+              </select>
+            </label>
+          </div>
+
+          <div id="weekly-fields">
+            <span class="label-text">Days of week</span>
+            <div class="flex flex-wrap gap-2 font-mono text-sm">
+              {['mon','tue','wed','thu','fri','sat','sun'].map(d => (
+                <label class="flex items-center gap-1 px-2 py-1 border border-base-300 rounded cursor-pointer">
+                  <input type="checkbox" name="dow" value={d} class="checkbox checkbox-xs" />
+                  {d}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div id="monthly-fields" class="hidden">
+            <label class="form-control">
+              <span class="label-text">Nth weekday (e.g. <code class="font-mono">1mon</code> = first Monday, <code class="font-mono">-1fri</code> = last Friday)</span>
+              <input name="nth_weekday" class="input input-bordered font-mono" placeholder="1mon" />
+            </label>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-3">
+            <label class="form-control">
+              <span class="label-text">Time of day ({slate.timezone})</span>
+              <input name="time_of_day" required class="input input-bordered font-mono" placeholder="07:00" pattern="[0-2][0-9]:[0-5][0-9]" />
+            </label>
+            <label class="form-control">
+              <span class="label-text">Duration (minutes)</span>
+              <input name="duration_minutes" required type="number" min="1" max="600" class="input input-bordered" placeholder="30" />
+            </label>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-3">
+            <label class="form-control">
+              <span class="label-text">Start date</span>
+              <input name="start_date" required type="date" value={todayInTz} class="input input-bordered" />
+            </label>
+            <label class="form-control">
+              <span class="label-text">End date (optional)</span>
+              <input name="end_date" type="date" class="input input-bordered" />
+            </label>
+          </div>
+
+          <button type="submit" class="btn btn-primary">Add rule</button>
+          <p id="rule-status" class="text-sm hidden"></p>
+        </form>
+      </div>
+    </div>
+
+    <div class="card bg-base-200 border border-base-300 mb-6">
+      <div class="card-body">
+        <div class="flex items-center justify-between">
+          <h2 class="card-title text-base">Active rules</h2>
+          <button id="regenerate" class="btn btn-sm btn-ghost border border-base-300">↻ Regenerate slots</button>
+        </div>
+        <p id="regen-status" class="text-sm hidden"></p>
+        {rules.results.length === 0 ? (
+          <p class="opacity-60 text-sm">No rules yet. Add one above, then click Regenerate.</p>
+        ) : (
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Cadence</th>
+                  <th>When</th>
+                  <th>Time</th>
+                  <th>Range</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rules.results.map((r: any) => (
+                  <tr>
+                    <td>{r.name ?? <span class="opacity-50">—</span>}</td>
+                    <td class="font-mono text-xs">{r.cadence}</td>
+                    <td class="font-mono text-xs">{r.cadence === 'weekly' ? r.days_of_week : r.nth_weekday}</td>
+                    <td class="font-mono text-xs">{r.time_of_day} · {r.duration_minutes}m</td>
+                    <td class="font-mono text-xs">{r.start_date} → {r.end_date ?? '∞'}</td>
+                    <td>
+                      <button data-rule-id={r.id} class="del-rule btn btn-xs btn-ghost text-error">delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+
+    <a href={`/${slug}/admin`} class="link text-sm">← Back to slate admin</a>
+  </section>
+
+  <script is:inline define:vars={{ slateId: slate.id }}>
+    const cadenceSel = document.getElementById('cadence');
+    const weeklyFields = document.getElementById('weekly-fields');
+    const monthlyFields = document.getElementById('monthly-fields');
+    function syncCadence() {
+      const monthly = cadenceSel.value === 'monthly';
+      weeklyFields.classList.toggle('hidden', monthly);
+      monthlyFields.classList.toggle('hidden', !monthly);
+    }
+    syncCadence();
+    cadenceSel.addEventListener('change', syncCadence);
+
+    const form = document.getElementById('rule-form');
+    const status = document.getElementById('rule-status');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = new FormData(form);
+      const cadence = data.get('cadence');
+      const payload = {
+        name: data.get('name') || undefined,
+        cadence,
+        time_of_day: data.get('time_of_day'),
+        duration_minutes: Number(data.get('duration_minutes')),
+        start_date: data.get('start_date'),
+        end_date: data.get('end_date') || null,
+      };
+      if (cadence === 'weekly') {
+        const dows = [...form.querySelectorAll('input[name=dow]:checked')].map(i => i.value);
+        if (dows.length === 0) { status.textContent = 'Pick at least one day.'; status.className = 'text-sm text-error'; return; }
+        payload.days_of_week = dows.join(',');
+      } else {
+        payload.nth_weekday = data.get('nth_weekday');
+      }
+      status.classList.remove('hidden', 'text-error', 'text-success');
+      status.textContent = 'Adding…';
+
+      const res = await fetch(`/api/slates/${slateId}/admin/rules`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) location.reload();
+      else { const e = await res.json().catch(() => ({})); status.classList.add('text-error'); status.textContent = `Couldn't add rule: ${e.error ?? res.status}`; }
+    });
+
+    document.querySelectorAll('.del-rule').forEach(b => {
+      b.addEventListener('click', async () => {
+        if (!confirm("Delete this rule? Existing slots stay; new ones won't be generated.")) return;
+        const res = await fetch(`/api/admin/rules/${b.dataset.ruleId}`, { method: 'DELETE' });
+        if (res.ok) location.reload();
+      });
+    });
+
+    document.getElementById('regenerate').addEventListener('click', async () => {
+      const regenStatus = document.getElementById('regen-status');
+      regenStatus.classList.remove('hidden', 'text-error', 'text-success');
+      regenStatus.textContent = 'Regenerating…';
+      const res = await fetch(`/api/slates/${slateId}/admin/regenerate-slots`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const body = await res.json();
+      if (res.ok) {
+        regenStatus.classList.add('text-success');
+        regenStatus.textContent = `Inserted ${body.inserted}, skipped ${body.skipped_existing} existing (of ${body.total_candidates} candidates).`;
+      } else {
+        regenStatus.classList.add('text-error');
+        regenStatus.textContent = `Failed: ${body.error}`;
+      }
+    });
+  </script>
+</Layout>

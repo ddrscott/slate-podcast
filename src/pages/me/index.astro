@@ -1,0 +1,185 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getDb } from '@/lib/db';
+import { signInUrlForCtx } from '@/lib/auth';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, '/me'));
+
+const db = getDb(Astro);
+
+const me = await db.prepare('SELECT headshot_url FROM users WHERE id = ?')
+  .bind(user.id).first<{ headshot_url: string | null }>();
+
+// Slates the user is a member of
+const memberships = await db.prepare(
+  `SELECT s.id, s.slug, s.name, s.description, m.role
+   FROM slate_members m JOIN slates s ON s.id = m.slate_id
+   WHERE m.user_id = ?
+   ORDER BY (m.role = 'speaker') DESC, m.joined_at DESC`,
+).bind(user.id).all<{ id: string; slug: string; name: string; description: string | null; role: string }>();
+
+// Upcoming slots the user is the speaker for
+const upcoming = await db.prepare(
+  `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status,
+          s.name AS slate_name, s.slug AS slate_slug, s.timezone,
+          COALESCE(sl.custom_title, sug.title) AS title
+   FROM slots sl
+   JOIN slates s ON s.id = sl.slate_id
+   LEFT JOIN suggestions sug ON sug.id = sl.suggestion_id
+   WHERE sl.speaker_id = ? AND sl.start_time >= unixepoch() AND sl.status != 'cancelled'
+   ORDER BY sl.start_time LIMIT 8`,
+).bind(user.id).all<{ id: string; start_time: number; duration_minutes: number; status: string; slate_name: string; slate_slug: string; timezone: string; title: string | null }>();
+
+// Recent suggestions submitted by the user
+const mySuggestions = await db.prepare(
+  `SELECT sug.id, sug.title, sug.status, sug.upvote_count, sug.submitted_at,
+          s.slug AS slate_slug, s.name AS slate_name
+   FROM suggestions sug JOIN slates s ON s.id = sug.slate_id
+   WHERE sug.author_id = ? ORDER BY sug.submitted_at DESC LIMIT 8`,
+).bind(user.id).all<{ id: string; title: string; status: string; upvote_count: number; submitted_at: number; slate_slug: string; slate_name: string }>();
+---
+
+<Layout title="Slate · my dashboard">
+  <section class="py-8">
+    <p class="font-mono text-sm text-signal mb-2">// signed in</p>
+    <div class="flex items-center gap-4">
+      <div id="headshot-preview" class="w-20 h-20 rounded-full border border-base-300 bg-base-200 overflow-hidden flex items-center justify-center text-2xl opacity-60">
+        {me?.headshot_url
+          ? <img src={me.headshot_url} alt="" class="w-full h-full object-cover" />
+          : <span class="font-mono">{user.email.charAt(0).toUpperCase()}</span>}
+      </div>
+      <div>
+        <h1 class="text-2xl md:text-3xl font-bold">{user.email}</h1>
+        <div class="flex flex-wrap gap-2 mt-2 text-sm">
+          <label class="btn btn-xs btn-ghost border border-base-300 cursor-pointer">
+            <input id="headshot-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
+            {me?.headshot_url ? 'Replace headshot' : 'Upload headshot'}
+          </label>
+          {me?.headshot_url && (
+            <button id="headshot-remove" class="btn btn-xs btn-ghost border border-base-300 text-error">Remove</button>
+          )}
+          <span id="headshot-status" class="text-xs opacity-70 self-center"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-8 grid md:grid-cols-2 gap-6">
+      <div>
+        <h2 class="font-semibold text-lg mb-3">My slates</h2>
+        {memberships.results.length === 0 ? (
+          <p class="text-sm opacity-60">You haven't joined any slates yet.</p>
+        ) : (
+          <ul class="space-y-2">
+            {memberships.results.map(m => (
+              <li>
+                <a href={`/${m.slug}`} class="block p-3 border border-base-300 rounded hover:border-signal">
+                  <div class="flex items-center justify-between">
+                    <span class="font-semibold">{m.name}</span>
+                    <span class={`badge badge-xs ${m.role === 'speaker' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>
+                  </div>
+                  <div class="text-xs opacity-60 font-mono">/{m.slug}</div>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div>
+        <h2 class="font-semibold text-lg mb-3">My upcoming slots</h2>
+        {upcoming.results.length === 0 ? (
+          <p class="text-sm opacity-60">No upcoming slots assigned to you.</p>
+        ) : (
+          <ul class="space-y-2">
+            {upcoming.results.map(s => {
+              const fmt = new Intl.DateTimeFormat('en-US', {
+                timeZone: s.timezone, weekday: 'short', month: 'short', day: 'numeric',
+                hour: 'numeric', minute: '2-digit',
+              });
+              return (
+                <li>
+                  <a href={`/${s.slate_slug}/slot/${s.id}`}
+                     class="block p-3 border border-base-300 rounded hover:border-signal">
+                    <div class="text-xs opacity-60 font-mono">{s.slate_name}</div>
+                    <div class="font-semibold">{s.title ?? '(no topic yet)'}</div>
+                    <div class="text-xs opacity-70 mt-1">{fmt.format(new Date(s.start_time * 1000))} · {s.timezone}</div>
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+
+    <div class="mt-10">
+      <h2 class="font-semibold text-lg mb-3">My recent suggestions</h2>
+      {mySuggestions.results.length === 0 ? (
+        <p class="text-sm opacity-60">You haven't submitted any suggestions yet.</p>
+      ) : (
+        <ul class="space-y-2">
+          {mySuggestions.results.map(s => (
+            <li class="p-3 border border-base-300 rounded">
+              <div class="flex items-center gap-2 text-xs">
+                <a href={`/${s.slate_slug}`} class="link">{s.slate_name}</a>
+                <span class="opacity-40">·</span>
+                <span class={`badge badge-xs ${s.status === 'open' ? 'badge-success' : s.status === 'scheduled' ? 'badge-primary' : 'badge-ghost'}`}>{s.status}</span>
+                <span class="opacity-60 font-mono">▲ {s.upvote_count}</span>
+              </div>
+              <div class="font-semibold mt-1">{s.title}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+
+    <form method="POST" action="/api/auth/sign-out" class="mt-10">
+      <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
+    </form>
+  </section>
+
+  <script is:inline>
+    (() => {
+      const input = document.getElementById('headshot-input');
+      const removeBtn = document.getElementById('headshot-remove');
+      const status = document.getElementById('headshot-status');
+      const preview = document.getElementById('headshot-preview');
+
+      function setStatus(msg, kind) {
+        status.classList.remove('text-error', 'text-success');
+        if (kind) status.classList.add(`text-${kind}`);
+        status.textContent = msg;
+      }
+
+      input?.addEventListener('change', async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) { setStatus('File too large (max 5 MB).', 'error'); return; }
+        setStatus('Uploading…');
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/me/headshot', { method: 'POST', body: fd });
+        if (res.ok) {
+          const body = await res.json();
+          preview.innerHTML = `<img src="${body.headshot_url}" alt="" class="w-full h-full object-cover" />`;
+          setStatus('Saved.', 'success');
+          setTimeout(() => location.reload(), 600);
+        } else {
+          const e = await res.json().catch(() => ({}));
+          setStatus(`Failed: ${e.error ?? res.status}`, 'error');
+        }
+      });
+
+      removeBtn?.addEventListener('click', async () => {
+        if (!confirm('Remove your headshot?')) return;
+        setStatus('Removing…');
+        const res = await fetch('/api/me/headshot', { method: 'DELETE' });
+        if (res.ok) location.reload();
+        else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
+      });
+    })();
+  </script>
+</Layout>

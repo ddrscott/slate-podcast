@@ -1,0 +1,80 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getDb } from '@/lib/db';
+import { isAppAdmin } from '@/lib/auth';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+const isAdmin = isAppAdmin(user?.scopes);
+
+const db = getDb(Astro);
+const publicSlates = await db.prepare(
+  `SELECT id, slug, name, description FROM slates
+   WHERE is_public = 1 ORDER BY created_at DESC LIMIT 12`,
+).all<{ id: string; slug: string; name: string; description: string | null }>();
+---
+
+<Layout title="Slate — podcast slot manager for the rest of us">
+  <section class="py-12 max-w-3xl">
+    <p class="font-mono text-sm text-signal mb-2">// volunteer-run podcasts</p>
+    <h1 class="text-4xl md:text-5xl font-bold tracking-tight leading-tight">
+      A year of empty slots.<br/>
+      <span class="opacity-60">A pool of suggestions.</span><br/>
+      Speakers pick. Members vote.
+    </h1>
+    <p class="mt-6 text-lg opacity-80 max-w-prose">
+      Slate inverts the Calendly model. The host posts a year of open demand;
+      Speakers see the gaps and claim slots; Members feed topic ideas into a
+      shared pool that everyone votes on.
+    </p>
+    <div class="mt-8 flex gap-3">
+      {isAdmin && <a href="/admin/slates/new" class="btn btn-primary">+ Create a slate</a>}
+      <a href="#how" class="btn btn-ghost">How it works</a>
+    </div>
+  </section>
+
+  {publicSlates.results.length > 0 && (
+    <section class="py-8">
+      <h2 class="text-xl font-bold mb-4">Public slates</h2>
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {publicSlates.results.map(s => (
+          <a href={`/${s.slug}`}
+             class="block p-4 bg-base-100 border border-base-300 rounded hover:border-signal transition-colors">
+            <div class="font-semibold">{s.name}</div>
+            <div class="text-xs opacity-60 font-mono mt-1">/{s.slug}</div>
+            {s.description && <p class="text-sm opacity-80 mt-2">{s.description}</p>}
+          </a>
+        ))}
+      </div>
+    </section>
+  )}
+
+  <section id="how" class="py-16 grid md:grid-cols-3 gap-6">
+    <div class="card bg-base-200 border border-base-300">
+      <div class="card-body">
+        <p class="font-mono text-xs text-signal">role 01</p>
+        <h2 class="card-title">App Admin</h2>
+        <p class="text-sm opacity-80">Creates slates and grants Speaker permissions. (You're an Admin if your auth.ljs.app token has the <code>admin</code> scope.)</p>
+      </div>
+    </div>
+    <div class="card bg-base-200 border border-base-300">
+      <div class="card-body">
+        <p class="font-mono text-xs text-signal">role 02</p>
+        <h2 class="card-title">Speaker</h2>
+        <p class="text-sm opacity-80">Runs episodes on a slate. Defines scheduling rules, claims slots, picks topics from the suggestion pool, writes show notes.</p>
+      </div>
+    </div>
+    <div class="card bg-base-200 border border-base-300">
+      <div class="card-body">
+        <p class="font-mono text-xs text-signal">role 03</p>
+        <h2 class="card-title">Member</h2>
+        <p class="text-sm opacity-80">Anyone with an email. Posts topic suggestions, upvotes others, sees the schedule. Cannot edit the calendar.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="py-12 text-center">
+    <p class="font-mono text-sm opacity-60">free during beta · email magic-link via auth.ljs.app · open Member signup</p>
+  </section>
+</Layout>

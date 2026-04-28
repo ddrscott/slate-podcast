@@ -1,0 +1,30 @@
+# build
+dist/
+.astro/
+.wrangler/
+
+# deps
+node_modules/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# env
+.env
+.env.local
+.env.production
+.dev.vars
+
+# editors
+.vscode/
+.idea/
+.DS_Store
+
+# d1 local
+.mf/
+
+# never commit local secrets recovered for personal reference
+*.local.txt

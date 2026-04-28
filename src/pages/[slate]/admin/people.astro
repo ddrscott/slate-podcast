@@ -1,0 +1,93 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getDb } from '@/lib/db';
+import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+
+export const prerender = false;
+
+const slug = Astro.params.slate;
+if (!slug) return new Response('Not found', { status: 404 });
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/admin/people`));
+
+const db = getDb(Astro);
+const slate = await db.prepare('SELECT id, name FROM slates WHERE slug = ?').bind(slug)
+  .first<{ id: string; name: string }>();
+if (!slate) return new Response('Not found', { status: 404 });
+
+const isAdmin = isAppAdmin(user.scopes);
+const member = await db.prepare(
+  'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
+).bind(slate.id, user.id).first<{ role: string }>();
+if (!isAdmin && member?.role !== 'speaker') {
+  return new Response('Speaker required', { status: 403 });
+}
+
+const members = await db.prepare(
+  `SELECT m.user_id, m.role, m.joined_at, m.promoted_at,
+          u.email
+   FROM slate_members m JOIN users u ON u.id = m.user_id
+   WHERE m.slate_id = ?
+   ORDER BY (m.role = 'speaker') DESC, m.joined_at DESC`,
+).bind(slate.id).all<any>();
+---
+
+<Layout title={`People · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+  <section class="py-6 max-w-4xl">
+    <div class="flex items-baseline justify-between mb-4">
+      <div>
+        <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
+        <h1 class="text-2xl font-bold">People</h1>
+        <p class="text-xs opacity-60 mt-1">
+          {isAdmin
+            ? 'You can promote/demote here, or use the global admin page for cross-slate management.'
+            : "Speakers see who's on the slate. To promote a Member to Speaker, ask the App Admin."}
+        </p>
+      </div>
+      {isAdmin && <a href="/admin/people" class="btn btn-sm btn-ghost border border-base-300">Cross-slate ↗</a>}
+      <a href={`/${slug}/admin`} class="btn btn-sm btn-ghost border border-base-300">← Slate admin</a>
+    </div>
+
+    <div class="space-y-2">
+      {members.results.length === 0 && <p class="opacity-60 text-sm">No one's joined yet.</p>}
+      {members.results.map((m: any) => (
+        <div class="card border border-base-300 bg-base-100">
+          <div class="card-body py-3 flex-row items-center gap-3">
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <span class="font-semibold">{m.email}</span>
+                <span class={`badge badge-xs ${m.role === 'speaker' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>
+              </div>
+            </div>
+            {isAdmin && m.role === 'member' && (
+              <button data-uid={m.user_id} data-action="promote"
+                      class="member-action btn btn-xs btn-primary">promote</button>
+            )}
+            {isAdmin && m.role === 'speaker' && (
+              <button data-uid={m.user_id} data-action="demote"
+                      class="member-action btn btn-xs btn-ghost border border-base-300 text-error">demote</button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <script is:inline define:vars={{ slateId: slate.id }}>
+    document.querySelectorAll('.member-action').forEach(b => {
+      b.addEventListener('click', async () => {
+        const { uid, action } = b.dataset;
+        b.disabled = true;
+        const res = action === 'promote'
+          ? await fetch(`/api/slates/${slateId}/speakers`, {
+              method: 'POST', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ user_id: uid }),
+            })
+          : await fetch(`/api/slates/${slateId}/speakers/${uid}`, { method: 'DELETE' });
+        if (res.ok) location.reload();
+        else { b.disabled = false; alert((await res.json().catch(() => ({}))).error ?? res.status); }
+      });
+    });
+  </script>
+</Layout>

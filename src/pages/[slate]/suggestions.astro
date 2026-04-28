@@ -1,0 +1,116 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getDb } from '@/lib/db';
+import { signInUrlForCtx, isAppAdmin } from '@/lib/auth';
+
+export const prerender = false;
+
+const slug = Astro.params.slate;
+if (!slug) return new Response('Not found', { status: 404 });
+
+const db = getDb(Astro);
+const slate = await db.prepare('SELECT id, name, is_public FROM slates WHERE slug = ?').bind(slug)
+  .first<{ id: string; name: string; is_public: number }>();
+if (!slate) return new Response('Not found', { status: 404 });
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/suggestions`));
+
+const isAdmin = isAppAdmin(user.scopes);
+const member = await db.prepare(
+  'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
+).bind(slate.id, user.id).first<{ role: string }>();
+if (!isAdmin && !member) return Astro.redirect(`/${slug}/join`);
+
+const url = new URL(Astro.request.url);
+const status = url.searchParams.get('status') ?? 'open';
+
+const where = status === 'all' ? 's.slate_id = ?' : 's.slate_id = ? AND s.status = ?';
+const params: unknown[] = status === 'all' ? [slate.id] : [slate.id, status];
+
+const suggestions = await db.prepare(
+  `SELECT s.id, s.title, s.description, s.url, s.tags, s.status, s.upvote_count,
+          s.submitted_at, s.scheduled_slot_id, u.email AS author_email,
+          (SELECT 1 FROM suggestion_votes v WHERE v.suggestion_id = s.id AND v.user_id = ?) AS has_voted
+   FROM suggestions s
+   JOIN users u ON u.id = s.author_id
+   WHERE ${where}
+   ORDER BY s.upvote_count DESC, s.submitted_at DESC`,
+).bind(user.id, ...params).all<any>();
+---
+
+<Layout title={`Suggestions · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+  <section class="py-8 max-w-3xl">
+    <div class="flex items-baseline justify-between mb-4">
+      <div>
+        <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
+        <h1 class="text-2xl font-bold">Suggestion pool</h1>
+      </div>
+      <a href={`/${slug}/suggest`} class="btn btn-primary btn-sm">+ Suggest</a>
+    </div>
+
+    <div class="flex gap-2 mb-6 text-sm">
+      {(['open','scheduled','archived','all'] as const).map(s => (
+        <a href={`?status=${s}`} class={`btn btn-xs ${status === s ? 'btn-primary' : 'btn-ghost border border-base-300'}`}>{s}</a>
+      ))}
+    </div>
+
+    <div class="space-y-3">
+      {suggestions.results.length === 0 && <p class="opacity-60 text-sm">No suggestions match.</p>}
+      {suggestions.results.map((s: any) => (
+        <div class={`card border ${s.has_voted ? 'border-signal' : 'border-base-300'} bg-base-100`}>
+          <div class="card-body py-4">
+            <div class="flex items-start gap-3">
+              <button class="upvote btn btn-sm btn-ghost flex-col h-auto py-1 border border-base-300"
+                      data-id={s.id} data-voted={s.has_voted ? '1' : '0'}>
+                <span class={s.has_voted ? 'text-signal' : 'opacity-60'}>▲</span>
+                <span class="font-mono text-xs">{s.upvote_count}</span>
+              </button>
+              <div class="flex-1">
+                <div class="flex items-center gap-2 text-xs">
+                  <span class={`badge badge-xs ${s.status === 'open' ? 'badge-success' : s.status === 'scheduled' ? 'badge-primary' : 'badge-ghost'}`}>{s.status}</span>
+                  <span class="opacity-60 font-mono">{s.author_email}</span>
+                </div>
+                <h2 class="card-title text-base mt-1">
+                  {s.url ? (
+                    <a href={s.url} target="_blank" rel="noopener noreferrer" class="link">{s.title}</a>
+                  ) : s.title}
+                </h2>
+                {s.description && <p class="text-sm opacity-80 mt-1">{s.description}</p>}
+                {s.tags && (
+                  <div class="flex flex-wrap gap-1 mt-2">
+                    {s.tags.split(',').map((t: string) => t.trim()).filter(Boolean).map((t: string) => (
+                      <span class="badge badge-xs badge-ghost font-mono">{t}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <p class="mt-8 text-sm"><a href={`/${slug}`} class="link">← Back to schedule</a></p>
+  </section>
+
+  <script is:inline>
+    document.querySelectorAll('.upvote').forEach(b => {
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        const res = await fetch(`/api/suggestions/${b.dataset.id}/vote`, { method: 'POST' });
+        if (res.ok) {
+          const body = await res.json();
+          b.querySelector('span:first-child').className = body.has_voted ? 'text-signal' : 'opacity-60';
+          b.querySelector('span:last-child').textContent = body.upvote_count;
+          b.dataset.voted = body.has_voted ? '1' : '0';
+          b.parentElement.parentElement.parentElement.className =
+            `card border ${body.has_voted ? 'border-signal' : 'border-base-300'} bg-base-100`;
+        } else {
+          alert((await res.json().catch(() => ({}))).error ?? res.status);
+        }
+        b.disabled = false;
+      });
+    });
+  </script>
+</Layout>

@@ -1,0 +1,82 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+
+export const prerender = false;
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, '/admin/slates/new'));
+if (!isAppAdmin(user.scopes)) return new Response('App-Admin required', { status: 403 });
+---
+
+<Layout title="Create a slate">
+  <section class="py-8 max-w-2xl">
+    <p class="font-mono text-sm text-signal mb-1">// new slate</p>
+    <h1 class="text-2xl font-bold mb-6">Create a slate</h1>
+
+    <form id="new-slate" class="space-y-4">
+      <label class="form-control">
+        <span class="label-text">Name</span>
+        <input name="name" required maxlength="120" class="input input-bordered" placeholder="Abolitionist Rising" />
+      </label>
+      <label class="form-control">
+        <span class="label-text">Slug (URL identifier)</span>
+        <input name="slug" maxlength="64" class="input input-bordered font-mono"
+               placeholder="ar (auto-derived from name if blank)" pattern="[a-z0-9][a-z0-9-]*" />
+        <span class="text-xs opacity-60 mt-1">Becomes <code class="font-mono">/{`{slug}`}</code>. You can change it later for soft privacy.</span>
+      </label>
+      <label class="form-control">
+        <span class="label-text">Timezone</span>
+        <select name="timezone" required class="select select-bordered">
+          <option value="America/New_York">America/New_York</option>
+          <option value="America/Chicago" selected>America/Chicago</option>
+          <option value="America/Denver">America/Denver</option>
+          <option value="America/Los_Angeles">America/Los_Angeles</option>
+          <option value="America/Phoenix">America/Phoenix</option>
+          <option value="America/Anchorage">America/Anchorage</option>
+          <option value="Pacific/Honolulu">Pacific/Honolulu</option>
+          <option value="UTC">UTC</option>
+          <option value="Europe/London">Europe/London</option>
+          <option value="Europe/Berlin">Europe/Berlin</option>
+          <option value="Australia/Sydney">Australia/Sydney</option>
+        </select>
+      </label>
+      <label class="form-control">
+        <span class="label-text">Description (optional)</span>
+        <textarea name="description" rows="3" maxlength="1000" class="textarea textarea-bordered"></textarea>
+      </label>
+      <button type="submit" class="btn btn-primary">Create</button>
+      <p id="status" class="text-sm hidden"></p>
+    </form>
+    <p class="mt-6 text-sm"><a href="/admin" class="link">← All slates</a></p>
+  </section>
+
+  <script is:inline>
+    const form = document.getElementById('new-slate');
+    const status = document.getElementById('status');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = new FormData(form);
+      status.classList.remove('hidden', 'text-error', 'text-success');
+      status.textContent = 'Creating…';
+      const res = await fetch('/api/slates', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: data.get('name'),
+          slug: data.get('slug') || undefined,
+          timezone: data.get('timezone'),
+          description: data.get('description') || undefined,
+        }),
+      });
+      if (res.ok) {
+        const { slate } = await res.json();
+        window.location.href = `/${slate.slug}/admin`;
+      } else {
+        const e = await res.json().catch(() => ({}));
+        status.classList.add('text-error');
+        status.textContent = `Failed: ${e.error ?? res.status}`;
+      }
+    });
+  </script>
+</Layout>
