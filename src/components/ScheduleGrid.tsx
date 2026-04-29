@@ -13,9 +13,11 @@ interface Props {
   slots: PublicSlot[];
   timezone: string;
   slateSlug: string;
-  // 'window' = current + next month, with a "view full schedule" link.
-  // 'all' = every month spanning the slot data (default for the admin grid view).
-  view?: 'window' | 'all';
+  // 'window'  = current + next month, with a "view full schedule" link.
+  // 'all'     = every month spanning the slot data (admin grid view).
+  // 'sidebar' = single-month-at-a-time with prev/next nav, compact cells,
+  //             no title hints. The lightweight reference view.
+  view?: 'window' | 'all' | 'sidebar';
 }
 
 // Open days get an orange outline so they read as "available slot" without
@@ -75,14 +77,26 @@ export default function ScheduleGrid({ slots: initialSlots, timezone, slateSlug,
   const todayIso = useMemo(() => fmt.iso.format(new Date()), [fmt]);
 
   // Determine month range:
-  //  - 'window' (default for public schedule): current month + next month.
-  //  - 'all': every month spanning the slot data, useful for full-year overview.
+  //  - 'window'  (default for public schedule): current month + next month.
+  //  - 'all'     : every month spanning the slot data, full-year overview.
+  //  - 'sidebar' : current month + 11 forward (12 total) so the sidebar's
+  //                prev/next nav has somewhere to land.
   const monthRange = useMemo(() => {
     if (view === 'window') {
       const now = parseISO(todayIso);
       const next = { y: now.y, m: now.m + 1 };
       if (next.m > 12) { next.m = 1; next.y++; }
       return [{ y: now.y, m: now.m }, next];
+    }
+    if (view === 'sidebar') {
+      const now = parseISO(todayIso);
+      const out: Array<{ y: number; m: number }> = [];
+      let y = now.y, m = now.m;
+      for (let i = 0; i < 12; i++) {
+        out.push({ y, m });
+        m++; if (m > 12) { m = 1; y++; }
+      }
+      return out;
     }
     if (slots.length === 0) return [] as Array<{ y: number; m: number }>;
     const sorted = [...slots].sort((a, b) => a.start_time - b.start_time);
@@ -97,6 +111,9 @@ export default function ScheduleGrid({ slots: initialSlots, timezone, slateSlug,
     return out;
   }, [slots, fmt, view, todayIso]);
 
+  // Sidebar mode shows one month at a time with prev/next nav.
+  const [sidebarIdx, setSidebarIdx] = useState(0);
+
   const { openCount, takenCount, totalCount } = useMemo(() => {
     let open = 0, taken = 0;
     for (const s of slots) {
@@ -107,11 +124,63 @@ export default function ScheduleGrid({ slots: initialSlots, timezone, slateSlug,
   }, [slots]);
 
   if (slots.length === 0) {
+    if (view === 'sidebar') {
+      return (
+        <p className="text-xs opacity-60">No slots yet.</p>
+      );
+    }
     return (
       <div className="card bg-base-200 border border-base-300">
         <div className="card-body">
           <p className="text-sm opacity-70">No slots have been generated yet. Check back soon.</p>
         </div>
+      </div>
+    );
+  }
+
+  if (view === 'sidebar') {
+    const current = monthRange[Math.min(sidebarIdx, monthRange.length - 1)] ?? monthRange[0];
+    const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
+      .format(new Date(Date.UTC(current.y, current.m - 1, 1)));
+    return (
+      <div className="space-y-2">
+        <div className="flex items-baseline gap-2 text-xs font-mono">
+          <span className="text-signal">{openCount}</span>
+          <span className="opacity-60">open</span>
+          <span className="opacity-40">·</span>
+          <span className="opacity-80">{takenCount}</span>
+          <span className="opacity-60">taken</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            className="w-7 h-7 inline-flex items-center justify-center rounded hover:bg-base-200 disabled:opacity-30 disabled:hover:bg-transparent"
+            disabled={sidebarIdx === 0}
+            onClick={() => setSidebarIdx(i => Math.max(0, i - 1))}
+            aria-label="Previous month"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div className="text-sm font-semibold flex-1 text-center">{monthLabel}</div>
+          <button
+            type="button"
+            className="w-7 h-7 inline-flex items-center justify-center rounded hover:bg-base-200 disabled:opacity-30 disabled:hover:bg-transparent"
+            disabled={sidebarIdx >= monthRange.length - 1}
+            onClick={() => setSidebarIdx(i => Math.min(monthRange.length - 1, i + 1))}
+            aria-label="Next month"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+        <MonthCalendar
+          key={`${current.y}-${current.m}`}
+          year={current.y}
+          month={current.m}
+          todayIso={todayIso}
+          slotsByDay={slotsByDay}
+          slateSlug={slateSlug}
+          compact
+        />
       </div>
     );
   }
@@ -145,13 +214,14 @@ export default function ScheduleGrid({ slots: initialSlots, timezone, slateSlug,
 }
 
 function MonthCalendar({
-  year, month, slotsByDay, slateSlug, todayIso,
+  year, month, slotsByDay, slateSlug, todayIso, compact = false,
 }: {
   year: number;
   month: number;
   slotsByDay: Map<string, PublicSlot[]>;
   slateSlug: string;
   todayIso: string;
+  compact?: boolean;
 }) {
   const first = new Date(Date.UTC(year, month - 1, 1));
   const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(first);
@@ -163,6 +233,21 @@ function MonthCalendar({
   for (let d = 1; d <= lastDay; d++) {
     const iso = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     cells.push({ day: d, iso, slots: slotsByDay.get(iso) });
+  }
+
+  if (compact) {
+    return (
+      <div>
+        <div className="grid grid-cols-7 gap-0.5 text-[9px] font-mono opacity-50 mb-1">
+          {['S','M','T','W','T','F','S'].map((d, i) => <div key={i} className="text-center">{d}</div>)}
+        </div>
+        <div className="grid grid-cols-7 gap-0.5">
+          {cells.map((c, i) => (
+            <DayCell key={i} cell={c} slateSlug={slateSlug} isToday={c.iso === todayIso} compact />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -180,15 +265,39 @@ function MonthCalendar({
   );
 }
 
-function DayCell({ cell, slateSlug, isToday }: {
+function DayCell({ cell, slateSlug, isToday, compact = false }: {
   cell: { day: number | null; iso?: string; slots?: PublicSlot[] };
   slateSlug: string;
   isToday: boolean;
+  compact?: boolean;
 }) {
   if (cell.day === null) return <div />;
   const slots = cell.slots ?? [];
-  // Today gets a ring outline regardless of whether there's a slot.
   const todayRing = isToday ? 'ring-2 ring-signal ring-offset-1 ring-offset-base-100' : '';
+
+  if (compact) {
+    if (slots.length === 0) {
+      return (
+        <div className={`aspect-square text-[9px] flex items-center justify-center font-mono rounded ${isToday ? 'bg-signal-50 ' + todayRing : 'opacity-30'}`}>
+          <span className={isToday ? 'text-signal font-bold' : ''}>{cell.day}</span>
+        </div>
+      );
+    }
+    const dominant = pickDominant(slots);
+    const cls = STATUS_COLORS[dominant];
+    const target = slots.length === 1
+      ? `/${slateSlug}/slot/${slots[0].id}`
+      : `/${slateSlug}/day/${cell.iso}`;
+    return (
+      <a
+        href={target}
+        className={`aspect-square text-[9px] flex items-center justify-center border rounded font-mono ${cls} hover:ring-2 hover:ring-signal transition-all ${todayRing}`}
+        title={slots.map(s => `${s.title ?? s.theme ?? '(open)'} — ${s.status}`).join('\n')}
+      >
+        {cell.day}
+      </a>
+    );
+  }
 
   if (slots.length === 0) {
     return (

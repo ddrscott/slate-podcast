@@ -1,0 +1,69 @@
+---
+// Sidebar for the slate index — vertical filter list + mini calendar +
+// archive link. Rendered twice on the page: once persistent on lg+ as a
+// left rail, and once inside a slide-in drawer for small screens. Both
+// instances share the same JS event handlers (filter clicks dispatch via
+// class selector; React calendar instances each subscribe to slot-updated
+// events so they stay in sync independently).
+
+import ScheduleGrid from './ScheduleGrid';
+import type { PublicSlot } from './ScheduleGrid';
+
+interface Props {
+  slate: { slug: string; timezone: string };
+  slots: PublicSlot[];
+  totalCount: number;
+  openCount: number;
+  scheduledCount: number;
+}
+
+const { slate, slots, totalCount, openCount, scheduledCount } = Astro.props;
+---
+
+<div class="space-y-6">
+  {/* Categories */}
+  <div>
+    <h3 class="font-mono text-[11px] uppercase tracking-wider opacity-50 mb-2 px-2">Categories</h3>
+    <ul class="space-y-0.5">
+      <li>
+        <button data-filter="open" class="filter-chip w-full flex items-center justify-between px-2 py-1.5 rounded text-sm bg-base-200 font-semibold text-signal">
+          <span>Open</span>
+          <span class="font-mono text-xs opacity-70">{openCount}</span>
+        </button>
+      </li>
+      <li>
+        <button data-filter="scheduled" class="filter-chip w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-base-200 transition-colors">
+          <span>Scheduled</span>
+          <span class="font-mono text-xs opacity-70">{scheduledCount}</span>
+        </button>
+      </li>
+      <li>
+        <button data-filter="all" class="filter-chip w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-base-200 transition-colors">
+          <span>All</span>
+          <span class="font-mono text-xs opacity-70">{totalCount}</span>
+        </button>
+      </li>
+    </ul>
+  </div>
+
+  {/* Mini calendar */}
+  <div>
+    <h3 class="font-mono text-[11px] uppercase tracking-wider opacity-50 mb-2 px-2">Schedule</h3>
+    <div class="px-2">
+      <ScheduleGrid
+        client:load
+        slots={slots}
+        timezone={slate.timezone}
+        slateSlug={slate.slug}
+        view="sidebar"
+      />
+    </div>
+  </div>
+
+  {/* Footer link */}
+  <div class="px-2">
+    <a href={`/${slate.slug}/suggestions?status=archived`} class="text-xs opacity-60 hover:opacity-100 hover:text-signal transition-colors">
+      View archived &amp; details →
+    </a>
+  </div>
+</div>

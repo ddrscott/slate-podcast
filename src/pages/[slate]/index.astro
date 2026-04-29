@@ -1,9 +1,9 @@
 ---
 import Layout from '@/layouts/Layout.astro';
-import ScheduleGrid from '@/components/ScheduleGrid';
 import ScheduleSuggestionPanel from '@/components/ScheduleSuggestionPanel.astro';
 import SuggestionDetailPanel from '@/components/SuggestionDetailPanel.astro';
 import SuggestionCard from '@/components/SuggestionCard.astro';
+import SlateSidebar from '@/components/SlateSidebar.astro';
 import { getDb, getEnv } from '@/lib/db';
 import { isAppAdmin, signInUrl } from '@/lib/auth';
 
@@ -112,36 +112,42 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
   slate={{ name: slate.name, slug: slate.slug }}
   slateContext={{ isMember, isSpeaker, role: member?.role as 'member' | 'speaker' | undefined ?? null, unreadActivity }}
 >
-  {/* Mobile-only tab bar — sticky to viewport top so the user can switch
-      between Topics and Schedule without scrolling back up. */}
-  <div class="lg:hidden sticky top-0 z-20 bg-base-100/95 backdrop-blur border-b border-base-300 -mx-4 mb-4">
-    <div class="flex">
-      <button data-tab="topics" type="button" class="tab-btn flex-1 py-3 text-sm font-semibold border-b-2 border-signal text-signal">
-        Topics <span class="opacity-60 font-normal">({totalCount})</span>
-      </button>
-      <button data-tab="schedule" type="button" class="tab-btn flex-1 py-3 text-sm font-semibold border-b-2 border-transparent opacity-60">
-        Schedule
-      </button>
-    </div>
-  </div>
+  <div class="lg:flex lg:gap-8 lg:items-start">
+    {/* Sidebar (desktop only) — categories + mini calendar.
+        On mobile the same sidebar lives in a drawer below. */}
+    <aside class="hidden lg:block w-64 shrink-0 lg:sticky lg:top-4">
+      <SlateSidebar
+        slate={{ slug: slate.slug, timezone: slate.timezone }}
+        slots={slotsForGrid}
+        totalCount={totalCount}
+        openCount={openCount}
+        scheduledCount={scheduledCount}
+      />
+    </aside>
 
-  {/* Two-pane container: side-by-side on lg, tab-toggled on smaller screens. */}
-  <div data-active-tab="topics" class="lg:grid lg:grid-cols-2 lg:gap-8 lg:items-start">
-    {/* TOPICS pane */}
-    <section data-panel="topics" aria-label="Topic suggestions">
-      <header class="flex items-baseline justify-between gap-3 mb-3 mt-4 lg:mt-0">
-        <h2 class="text-lg font-semibold hidden lg:block">Topics <span class="text-sm opacity-50 font-normal ml-1">{totalCount}</span></h2>
-        <div class="ml-auto">
-          {isMember && (
-            <a href={`/${slate.slug}/suggest`} class="btn btn-primary btn-sm">+ Suggest a topic</a>
-          )}
-          {user && !isMember && (
-            <button id="join-btn" class="btn btn-primary btn-sm">Join as Member</button>
-          )}
-          {!user && (
-            <a href={signInHref} class="btn btn-primary btn-sm">Sign in to suggest</a>
-          )}
-        </div>
+    {/* Body */}
+    <div class="flex-1 min-w-0">
+      {/* Action bar: search + primary CTA + drawer toggle (mobile) */}
+      <header class="flex flex-wrap items-center gap-2 mb-4">
+        <button id="sidebar-toggle" type="button"
+                class="lg:hidden inline-flex items-center gap-2 px-3 py-2 rounded border border-base-300 hover:bg-base-200 text-sm"
+                aria-label="Open filters and schedule">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+          <span>Filters &amp; schedule</span>
+        </button>
+        <input id="topic-search" type="search" placeholder="Search topics…"
+               class="input input-bordered input-sm flex-1 min-w-0" />
+        {isMember && (
+          <a href={`/${slate.slug}/suggest`} class="btn btn-primary btn-sm shrink-0">+ Suggest a topic</a>
+        )}
+        {user && !isMember && (
+          <button id="join-btn" class="btn btn-primary btn-sm shrink-0">Join as Member</button>
+        )}
+        {!user && (
+          <a href={signInHref} class="btn btn-primary btn-sm shrink-0">Sign in to suggest</a>
+        )}
       </header>
 
       {totalCount === 0 ? (
@@ -157,17 +163,7 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
         </div>
       ) : (
         <>
-          <div class="flex flex-wrap items-center gap-2 mb-3">
-            <div class="flex gap-1 text-xs">
-              <button data-filter="open" class="filter-chip btn btn-xs btn-primary">Open <span class="opacity-80 ml-1">{openCount}</span></button>
-              <button data-filter="scheduled" class="filter-chip btn btn-xs btn-ghost border border-base-300">Scheduled <span class="opacity-60 ml-1">{scheduledCount}</span></button>
-              <button data-filter="all" class="filter-chip btn btn-xs btn-ghost border border-base-300">All <span class="opacity-60 ml-1">{totalCount}</span></button>
-            </div>
-            <input id="topic-search" type="search" placeholder="Search…"
-                   class="input input-bordered input-sm flex-1 min-w-0" />
-          </div>
-
-          <div id="topics-list" class="space-y-2">
+          <div id="topics-list" class="space-y-3">
             {suggestions.results.map(s => (
               <SuggestionCard
                 s={s}
@@ -183,30 +179,35 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
           <p id="topics-empty" class="hidden mt-6 text-center text-sm opacity-60">
             Nothing matches.
           </p>
-
-          <p class="mt-6 text-xs opacity-60">
-            <a href={`/${slate.slug}/suggestions?status=archived`} class="hover:opacity-100">View archived &amp; details →</a>
-          </p>
         </>
       )}
-    </section>
+    </div>
+  </div>
 
-    {/* SCHEDULE pane — sticky on desktop so it stays in view while the
-        topics list scrolls. */}
-    <section data-panel="schedule" aria-label="Schedule" class="lg:sticky lg:top-4 lg:self-start mt-4 lg:mt-0">
-      <header class="hidden lg:flex items-baseline justify-between mb-3">
-        <h2 class="text-lg font-semibold">Schedule</h2>
-        <span class="text-xs opacity-60 font-mono">{slate.timezone}</span>
-      </header>
-
-      <ScheduleGrid
-        client:load
-        slots={slotsForGrid}
-        timezone={slate.timezone}
-        slateSlug={slate.slug}
-        view="window"
-      />
-    </section>
+  {/* Mobile drawer — same sidebar contents, slides in from the left. */}
+  <div id="sidebar-drawer-root" class="lg:hidden hidden fixed inset-0 z-40" role="dialog" aria-modal="true" aria-label="Filters and schedule">
+    <div id="sidebar-drawer-backdrop" class="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-200"></div>
+    <aside id="sidebar-drawer-pane"
+           class="absolute left-0 top-0 h-full w-80 max-w-[85vw] bg-base-100 shadow-2xl overflow-y-auto -translate-x-full transition-transform duration-200">
+      <div class="flex items-center justify-between p-3 border-b border-base-300">
+        <p class="font-mono text-xs text-signal">// filters &amp; schedule</p>
+        <button id="sidebar-drawer-close" type="button" aria-label="Close"
+                class="btn btn-ghost btn-sm btn-square">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M6 6l12 12M6 18L18 6"/>
+          </svg>
+        </button>
+      </div>
+      <div class="p-3">
+        <SlateSidebar
+          slate={{ slug: slate.slug, timezone: slate.timezone }}
+          slots={slotsForGrid}
+          totalCount={totalCount}
+          openCount={openCount}
+          scheduledCount={scheduledCount}
+        />
+      </div>
+    </aside>
   </div>
 
   {isSpeaker && <ScheduleSuggestionPanel slate={{ id: slate.id, slug: slate.slug, name: slate.name }} />}
@@ -218,16 +219,6 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
     isAdmin={isAppAdmin(user?.scopes)}
     currentUserId={user?.id}
   />
-
-  <style is:inline>
-    /* Mobile-only: hide the inactive panel based on the container's
-       data-active-tab attribute. On lg+ the grid layout puts both side
-       by side and these rules don't apply. */
-    @media (max-width: 1023px) {
-      [data-active-tab="topics"] [data-panel="schedule"] { display: none; }
-      [data-active-tab="schedule"] [data-panel="topics"] { display: none; }
-    }
-  </style>
 
   <script is:inline define:vars={{
     slateId: slate.id,
@@ -245,29 +236,48 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
       hour: 'numeric', minute: '2-digit',
     });
 
-    // ─── Tab switching (mobile only) ─────────────────────────────────────
-    const paneContainer = document.querySelector('[data-active-tab]');
-    const tabButtons = document.querySelectorAll('[data-tab]');
-    function setTab(name) {
-      if (paneContainer) paneContainer.dataset.activeTab = name;
-      tabButtons.forEach(other => {
-        const active = other.dataset.tab === name;
-        other.classList.toggle('text-signal', active);
-        other.classList.toggle('border-signal', active);
-        other.classList.toggle('opacity-60', !active);
-        other.classList.toggle('border-transparent', !active);
-      });
+    // ─── Sidebar drawer (mobile) ─────────────────────────────────────────
+    const drawerRoot = document.getElementById('sidebar-drawer-root');
+    const drawerPane = document.getElementById('sidebar-drawer-pane');
+    const drawerBackdrop = document.getElementById('sidebar-drawer-backdrop');
+    const drawerOpenBtn = document.getElementById('sidebar-toggle');
+    const drawerCloseBtn = document.getElementById('sidebar-drawer-close');
+
+    function openDrawer() {
+      if (!drawerRoot || !drawerPane || !drawerBackdrop) return;
+      drawerRoot.classList.remove('hidden');
+      void drawerPane.offsetWidth;
+      drawerPane.classList.remove('-translate-x-full');
+      drawerBackdrop.classList.remove('opacity-0');
     }
-    tabButtons.forEach(btn => {
-      btn.addEventListener('click', () => setTab(btn.dataset.tab));
+    function closeDrawer() {
+      if (!drawerRoot || !drawerPane || !drawerBackdrop) return;
+      drawerPane.classList.add('-translate-x-full');
+      drawerBackdrop.classList.add('opacity-0');
+      setTimeout(() => drawerRoot.classList.add('hidden'), 200);
+    }
+    drawerOpenBtn?.addEventListener('click', openDrawer);
+    drawerCloseBtn?.addEventListener('click', closeDrawer);
+    drawerBackdrop?.addEventListener('click', closeDrawer);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && drawerRoot && !drawerRoot.classList.contains('hidden')) closeDrawer();
     });
 
     // ─── Filter chips + search ───────────────────────────────────────────
-    const filterChips = document.querySelectorAll('.filter-chip');
+    // Filter chips appear in BOTH sidebar instances (desktop + drawer).
+    // Active state syncs across them by data-filter attribute.
+    const ACTIVE_CHIP_CLASSES = ['bg-base-200', 'font-semibold', 'text-signal'];
     const searchInput = document.getElementById('topic-search');
     const topicsList = document.getElementById('topics-list');
     const topicsEmpty = document.getElementById('topics-empty');
     let activeFilter = 'open';
+
+    function syncFilterChipActive() {
+      document.querySelectorAll('.filter-chip').forEach(chip => {
+        const isActive = chip.dataset.filter === activeFilter;
+        ACTIVE_CHIP_CLASSES.forEach(cls => chip.classList.toggle(cls, isActive));
+      });
+    }
 
     function applyFilters() {
       if (!topicsList) return;
@@ -283,22 +293,21 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
       });
       topicsEmpty?.classList.toggle('hidden', visible > 0);
     }
-    filterChips.forEach(b => {
-      b.addEventListener('click', () => {
-        activeFilter = b.dataset.filter;
-        filterChips.forEach(other => {
-          const active = other === b;
-          other.classList.toggle('btn-primary', active);
-          other.classList.toggle('btn-ghost', !active);
-          other.classList.toggle('border', !active);
-          other.classList.toggle('border-base-300', !active);
-        });
-        applyFilters();
-      });
+
+    // Single delegated handler so chips in either sidebar instance fire it.
+    document.addEventListener('click', (e) => {
+      const chip = e.target.closest('.filter-chip');
+      if (!chip) return;
+      activeFilter = chip.dataset.filter;
+      syncFilterChipActive();
+      applyFilters();
+      // Close the drawer on selection so the user immediately sees the
+      // newly-filtered topic list on mobile.
+      if (drawerRoot && !drawerRoot.classList.contains('hidden')) closeDrawer();
     });
     searchInput?.addEventListener('input', applyFilters);
 
-    // Recount filter-chip badges + mobile tab counter from the DOM.
+    // Recount the per-filter badges in BOTH sidebar instances from the DOM.
     function refreshCounts() {
       if (!topicsList) return;
       let open = 0, scheduled = 0;
@@ -307,17 +316,16 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
         else if (c.dataset.suggestionStatus === 'scheduled') scheduled++;
       });
       const total = open + scheduled;
-      const setSpan = (sel, txt) => {
-        const el = document.querySelector(sel);
-        if (el) el.textContent = txt;
+      const setAll = (sel, txt) => {
+        document.querySelectorAll(sel).forEach(el => { el.textContent = txt; });
       };
-      setSpan('[data-filter="open"] span', ` ${open}`);
-      setSpan('[data-filter="scheduled"] span', ` ${scheduled}`);
-      setSpan('[data-filter="all"] span', ` ${total}`);
-      setSpan('[data-tab="topics"] span', `(${total})`);
+      setAll('[data-filter="open"] span:last-child', String(open));
+      setAll('[data-filter="scheduled"] span:last-child', String(scheduled));
+      setAll('[data-filter="all"] span:last-child', String(total));
     }
 
     applyFilters();
+    syncFilterChipActive();
 
     // ─── Card transitions (driven by panel / unschedule events) ──────────
     function transitionCardToScheduled(detail) {
