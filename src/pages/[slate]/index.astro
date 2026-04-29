@@ -2,6 +2,7 @@
 import Layout from '@/layouts/Layout.astro';
 import ScheduleGrid from '@/components/ScheduleGrid';
 import ScheduleSuggestionPanel from '@/components/ScheduleSuggestionPanel.astro';
+import SuggestionDetailPanel from '@/components/SuggestionDetailPanel.astro';
 import SuggestionCard from '@/components/SuggestionCard.astro';
 import { getDb, getEnv } from '@/lib/db';
 import { isAppAdmin, signInUrl } from '@/lib/auth';
@@ -219,6 +220,14 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
 
   {isSpeaker && <ScheduleSuggestionPanel slate={{ id: slate.id, slug: slate.slug, name: slate.name }} />}
 
+  <SuggestionDetailPanel
+    slate={{ id: slate.id, slug: slate.slug, name: slate.name, timezone: slate.timezone }}
+    isMember={isMember}
+    isSpeaker={isSpeaker}
+    isAdmin={isAppAdmin(user?.scopes)}
+    currentUserId={user?.id}
+  />
+
   <style is:inline>
     /* Mobile-only: hide the inactive panel based on the container's
        data-active-tab attribute. On lg+ the grid layout puts both side
@@ -229,22 +238,37 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
     }
   </style>
 
-  <script is:inline define:vars={{ slateId: slate.id }}>
+  <script is:inline define:vars={{
+    slateId: slate.id,
+    slateTimezone: slate.timezone,
+    isSpeaker,
+  }}>
+    // ─── Helpers ─────────────────────────────────────────────────────────
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+    const fmtSched = new Intl.DateTimeFormat('en-US', {
+      timeZone: slateTimezone, weekday: 'short', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+    });
+
     // ─── Tab switching (mobile only) ─────────────────────────────────────
     const paneContainer = document.querySelector('[data-active-tab]');
     const tabButtons = document.querySelectorAll('[data-tab]');
-    tabButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const target = btn.dataset.tab;
-        if (paneContainer) paneContainer.dataset.activeTab = target;
-        tabButtons.forEach(other => {
-          const active = other === btn;
-          other.classList.toggle('text-signal', active);
-          other.classList.toggle('border-signal', active);
-          other.classList.toggle('opacity-60', !active);
-          other.classList.toggle('border-transparent', !active);
-        });
+    function setTab(name) {
+      if (paneContainer) paneContainer.dataset.activeTab = name;
+      tabButtons.forEach(other => {
+        const active = other.dataset.tab === name;
+        other.classList.toggle('text-signal', active);
+        other.classList.toggle('border-signal', active);
+        other.classList.toggle('opacity-60', !active);
+        other.classList.toggle('border-transparent', !active);
       });
+    }
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => setTab(btn.dataset.tab));
     });
 
     // ─── Filter chips + search ───────────────────────────────────────────
@@ -282,9 +306,123 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
       });
     });
     searchInput?.addEventListener('input', applyFilters);
-    // Initial pass — default filter is "open", which was set as the active
-    // chip above; hide scheduled cards on first paint.
+
+    // Recount filter-chip badges + mobile tab counter from the DOM.
+    function refreshCounts() {
+      if (!topicsList) return;
+      let open = 0, scheduled = 0;
+      topicsList.querySelectorAll('[data-suggestion-card]').forEach(c => {
+        if (c.dataset.suggestionStatus === 'open') open++;
+        else if (c.dataset.suggestionStatus === 'scheduled') scheduled++;
+      });
+      const total = open + scheduled;
+      const setSpan = (sel, txt) => {
+        const el = document.querySelector(sel);
+        if (el) el.textContent = txt;
+      };
+      setSpan('[data-filter="open"] span', ` ${open}`);
+      setSpan('[data-filter="scheduled"] span', ` ${scheduled}`);
+      setSpan('[data-filter="all"] span', ` ${total}`);
+      setSpan('[data-tab="topics"] span', `(${total})`);
+    }
+
     applyFilters();
+
+    // ─── Card transitions (driven by panel / unschedule events) ──────────
+    function transitionCardToScheduled(detail) {
+      const { suggestionId, slotId, startTime, speakerEmail } = detail;
+      const card = document.querySelector(`[data-suggestion-card="${suggestionId}"]`);
+      if (!card) return;
+
+      card.dataset.suggestionStatus = 'scheduled';
+      card.classList.remove('bg-base-100');
+      card.classList.add('bg-base-200/40');
+
+      card.querySelector('[data-card-title]')?.classList.add('opacity-70');
+
+      const content = card.querySelector('[data-card-content]');
+      if (!content) return;
+
+      let meta = content.querySelector('[data-card-meta]');
+      if (!meta) {
+        meta = document.createElement('div');
+        meta.setAttribute('data-card-meta', '');
+        meta.className = 'flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs font-mono opacity-60';
+        const desc = content.querySelector('[data-card-description]');
+        const title = content.querySelector('[data-card-title]');
+        (desc ?? title)?.after(meta);
+      }
+      const dateStr = startTime ? fmtSched.format(new Date(startTime * 1000)) : '';
+      meta.innerHTML =
+        (dateStr ? `<span>${escapeHtml(dateStr)}</span>` : '') +
+        (speakerEmail ? `<span class="opacity-80">→ ${escapeHtml(speakerEmail)}</span>` : '');
+
+      let actions = content.querySelector('[data-card-actions]');
+      if (!actions) {
+        actions = document.createElement('div');
+        actions.setAttribute('data-card-actions', '');
+        actions.className = 'mt-3 flex items-center gap-3';
+        content.appendChild(actions);
+      }
+      const titleText = card.dataset.suggestionTitle ?? '';
+      actions.innerHTML = `
+        <button type="button"
+                class="unschedule-trigger text-xs opacity-60 hover:opacity-100 hover:text-error transition-colors px-2 py-1 -mx-2"
+                data-slot-id="${escapeHtml(slotId)}"
+                data-suggestion-title="${escapeHtml(titleText)}">
+          Unschedule
+        </button>
+      `;
+      bindUnscheduleTriggers(actions);
+
+      applyFilters();
+      refreshCounts();
+    }
+
+    function transitionCardToOpen(detail) {
+      const { suggestionId } = detail;
+      const card = document.querySelector(`[data-suggestion-card="${suggestionId}"]`);
+      if (!card) return;
+
+      card.dataset.suggestionStatus = 'open';
+      card.classList.remove('bg-base-200/40');
+      card.classList.add('bg-base-100');
+
+      card.querySelector('[data-card-title]')?.classList.remove('opacity-70');
+
+      const content = card.querySelector('[data-card-content]');
+      if (!content) return;
+
+      content.querySelector('[data-card-meta]')?.remove();
+
+      let actions = content.querySelector('[data-card-actions]');
+      if (isSpeaker) {
+        if (!actions) {
+          actions = document.createElement('div');
+          actions.setAttribute('data-card-actions', '');
+          actions.className = 'mt-3 flex items-center gap-3';
+          content.appendChild(actions);
+        }
+        const titleText = card.dataset.suggestionTitle ?? '';
+        actions.innerHTML = `
+          <button type="button"
+                  class="schedule-trigger btn btn-sm btn-primary"
+                  data-suggestion-id="${escapeHtml(suggestionId)}"
+                  data-suggestion-title="${escapeHtml(titleText)}">
+            Claim &amp; schedule
+          </button>
+        `;
+        bindScheduleTriggers(actions);
+      } else {
+        actions?.remove();
+      }
+
+      applyFilters();
+      refreshCounts();
+    }
+
+    window.addEventListener('suggestion-scheduled', (e) => transitionCardToScheduled(e.detail ?? {}));
+    window.addEventListener('suggestion-unscheduled', (e) => transitionCardToOpen(e.detail ?? {}));
 
     // ─── Join, upvote, schedule, unschedule ──────────────────────────────
     const joinBtn = document.getElementById('join-btn');
@@ -295,50 +433,106 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
       else { joinBtn.disabled = false; alert((await res.json().catch(() => ({}))).error ?? res.status); }
     });
 
-    document.querySelectorAll('.upvote').forEach(b => {
-      b.addEventListener('click', async () => {
-        b.disabled = true;
-        const res = await fetch(`/api/suggestions/${b.dataset.id}/vote`, { method: 'POST' });
-        if (res.ok) {
-          const body = await res.json();
-          const voted = !!body.has_voted;
-          const arrow = b.querySelector('[data-vote-arrow]');
-          const count = b.querySelector('[data-vote-count]');
-          arrow.classList.toggle('text-signal', voted);
-          arrow.classList.toggle('opacity-40', !voted);
-          count.classList.toggle('text-signal', voted);
-          count.classList.toggle('font-bold', voted);
-          count.classList.toggle('opacity-70', !voted);
-          count.textContent = body.upvote_count;
-          const card = b.closest('[data-suggestion-card]');
-          card?.classList.toggle('border-signal', voted);
-          card?.classList.toggle('border-base-300', !voted);
-        } else {
-          alert((await res.json().catch(() => ({}))).error ?? res.status);
-        }
-        b.disabled = false;
+    function bindUpvote(root) {
+      root.querySelectorAll('.upvote').forEach(b => {
+        if (b.dataset.bound) return;
+        b.dataset.bound = '1';
+        b.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          b.disabled = true;
+          const res = await fetch(`/api/suggestions/${b.dataset.id}/vote`, { method: 'POST' });
+          if (res.ok) {
+            const body = await res.json();
+            const voted = !!body.has_voted;
+            const arrow = b.querySelector('[data-vote-arrow]');
+            const count = b.querySelector('[data-vote-count]');
+            arrow.classList.toggle('text-signal', voted);
+            arrow.classList.toggle('opacity-40', !voted);
+            count.classList.toggle('text-signal', voted);
+            count.classList.toggle('font-bold', voted);
+            count.classList.toggle('opacity-70', !voted);
+            count.textContent = body.upvote_count;
+            const card = b.closest('[data-suggestion-card]');
+            card?.classList.toggle('border-signal', voted);
+            card?.classList.toggle('border-base-300', !voted);
+          } else {
+            alert((await res.json().catch(() => ({}))).error ?? res.status);
+          }
+          b.disabled = false;
+        });
       });
-    });
+    }
+    function bindScheduleTriggers(root) {
+      root.querySelectorAll('.schedule-trigger').forEach(b => {
+        if (b.dataset.bound) return;
+        b.dataset.bound = '1';
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          window.dispatchEvent(new CustomEvent('schedule-suggestion', {
+            detail: {
+              suggestionId: b.dataset.suggestionId,
+              suggestionTitle: b.dataset.suggestionTitle,
+            },
+          }));
+        });
+      });
+    }
+    function bindUnscheduleTriggers(root) {
+      root.querySelectorAll('.unschedule-trigger').forEach(b => {
+        if (b.dataset.bound) return;
+        b.dataset.bound = '1';
+        b.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (!confirm(`Unschedule "${b.dataset.suggestionTitle}"? The slot goes back to open.`)) return;
+          b.disabled = true;
+          const slotId = b.dataset.slotId;
+          const res = await fetch(`/api/slots/${slotId}/claim-and-schedule`, { method: 'DELETE' });
+          if (res.ok) {
+            const body = await res.json();
+            // Calendar: slot goes back to open, lose the title hint
+            window.dispatchEvent(new CustomEvent('slot-updated', {
+              detail: { slotId, status: 'open', title: null },
+            }));
+            // Topic pane: card flips back to open
+            if (body.freed_suggestion_id) {
+              window.dispatchEvent(new CustomEvent('suggestion-unscheduled', {
+                detail: { suggestionId: body.freed_suggestion_id },
+              }));
+            }
+          } else {
+            b.disabled = false;
+            alert((await res.json().catch(() => ({}))).error ?? res.status);
+          }
+        });
+      });
+    }
+    bindUpvote(document);
+    bindScheduleTriggers(document);
+    bindUnscheduleTriggers(document);
 
-    document.querySelectorAll('.schedule-trigger').forEach(b => {
-      b.addEventListener('click', () => {
-        window.dispatchEvent(new CustomEvent('schedule-suggestion', {
-          detail: {
-            suggestionId: b.dataset.suggestionId,
-            suggestionTitle: b.dataset.suggestionTitle,
-          },
-        }));
+    // ─── Open detail panel on card click (anywhere not a button/link) ────
+    function openDetail(card) {
+      window.dispatchEvent(new CustomEvent('view-suggestion', {
+        detail: { suggestionId: card.dataset.suggestionCard },
+      }));
+    }
+    function bindCardClick(root) {
+      root.querySelectorAll('[data-suggestion-card]').forEach(card => {
+        if (card.dataset.cardBound) return;
+        card.dataset.cardBound = '1';
+        card.addEventListener('click', (e) => {
+          // Ignore clicks on interactive descendants — they handle themselves.
+          if (e.target.closest('button, a')) return;
+          openDetail(card);
+        });
+        card.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          if (e.target !== card) return; // child controls have their own keying
+          e.preventDefault();
+          openDetail(card);
+        });
       });
-    });
-
-    document.querySelectorAll('.unschedule-trigger').forEach(b => {
-      b.addEventListener('click', async () => {
-        if (!confirm(`Unschedule "${b.dataset.suggestionTitle}"? The slot goes back to open.`)) return;
-        b.disabled = true;
-        const res = await fetch(`/api/slots/${b.dataset.slotId}/claim-and-schedule`, { method: 'DELETE' });
-        if (res.ok) location.reload();
-        else { b.disabled = false; alert((await res.json().catch(() => ({}))).error ?? res.status); }
-      });
-    });
+    }
+    bindCardClick(document);
   </script>
 </Layout>

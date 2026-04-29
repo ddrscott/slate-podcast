@@ -63,7 +63,11 @@ const hasActions = (isSpeaker && isOpen) || canUnschedule;
 <article
   data-suggestion-card={s.id}
   data-suggestion-status={s.status}
-  class={`rounded border ${cardBorder} ${cardBg} transition-colors`}
+  data-suggestion-title={s.title}
+  class={`suggestion-card rounded border ${cardBorder} ${cardBg} transition-colors cursor-pointer hover:border-base-content/30`}
+  role="button"
+  tabindex="0"
+  aria-label={`Open details for ${s.title}`}
 >
   <div class="flex items-stretch gap-2 p-3">
     {isMember ? (
@@ -82,19 +86,19 @@ const hasActions = (isSpeaker && isOpen) || canUnschedule;
       </div>
     )}
 
-    <div class="flex-1 min-w-0 py-1">
-      <h3 class={`font-semibold text-base leading-snug break-words ${titleClass}`}>
+    <div data-card-content class="flex-1 min-w-0 py-1">
+      <h3 data-card-title class={`font-semibold text-base leading-snug break-words ${titleClass}`}>
         {s.url ? (
           <a href={s.url} target="_blank" rel="noopener noreferrer" class="hover:text-signal transition-colors">{s.title}</a>
         ) : s.title}
       </h3>
 
       {s.description && (
-        <p class="text-sm opacity-70 mt-1 line-clamp-2">{s.description}</p>
+        <p data-card-description class="text-sm opacity-70 mt-1 line-clamp-2">{s.description}</p>
       )}
 
       {hasMeta && (
-        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs font-mono opacity-60">
+        <div data-card-meta class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs font-mono opacity-60">
           {isScheduled && s.scheduled_start && (
             <span>{fmtSched.format(new Date(s.scheduled_start * 1000))}</span>
           )}
@@ -111,7 +115,7 @@ const hasActions = (isSpeaker && isOpen) || canUnschedule;
       )}
 
       {hasActions && (
-        <div class="mt-3 flex items-center gap-3">
+        <div data-card-actions class="mt-3 flex items-center gap-3">
           {isSpeaker && isOpen && (
             <button
               class="schedule-trigger btn btn-sm btn-primary"

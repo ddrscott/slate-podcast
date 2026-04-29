@@ -316,20 +316,21 @@ const { slate } = Astro.props;
       root.dataset.state = 'open';
       lockBodyScroll();
 
-      if (!cachedPayload) {
-        loading.classList.remove('hidden');
-        try {
-          const res = await fetch(`/api/slates/${slateId}/open-slots`);
-          if (!res.ok) throw new Error(`status ${res.status}`);
-          cachedPayload = await res.json();
-        } catch (err) {
-          setStatus("Couldn't load slots. Refresh and try again.", 'error');
-          loading.classList.add('hidden');
-          return;
-        }
+      // Always re-fetch — the page can be edited from elsewhere (other
+      // speakers, the same user via the unschedule control on a card),
+      // so a stale cache is worse than a tiny extra request.
+      loading.classList.remove('hidden');
+      try {
+        const res = await fetch(`/api/slates/${slateId}/open-slots`);
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        cachedPayload = await res.json();
+      } catch (err) {
+        setStatus("Couldn't load slots. Refresh and try again.", 'error');
         loading.classList.add('hidden');
-        buildIndex(cachedPayload);
+        return;
       }
+      loading.classList.add('hidden');
+      buildIndex(cachedPayload);
       empty.classList.toggle('hidden', cachedPayload.slots.length > 0);
       renderMonth();
     }
@@ -353,9 +354,35 @@ const { slate } = Astro.props;
         body: JSON.stringify({ suggestion_id: activeSuggestionId }),
       });
       if (res.ok) {
+        const body = await res.json();
         if (window.plausible) window.plausible('Schedule Suggestion', { props: { slate: slateSlug } });
-        setStatus('Scheduled. Reloading…', 'success');
-        setTimeout(() => location.reload(), 600);
+
+        // Tell the calendar grid to flip this slot to confirmed (and pick
+        // up the suggestion's title for the cell hint).
+        window.dispatchEvent(new CustomEvent('slot-updated', {
+          detail: {
+            slotId,
+            status: 'confirmed',
+            title: titleEl.textContent ?? null,
+          },
+        }));
+
+        // Tell the topic pane to transition this card from open → scheduled.
+        window.dispatchEvent(new CustomEvent('suggestion-scheduled', {
+          detail: {
+            suggestionId: activeSuggestionId,
+            slotId,
+            startTime: body.start_time,
+            speakerId: body.speaker_id,
+            speakerEmail: body.speaker_email,
+          },
+        }));
+
+        // Local cache is now stale — drop it so re-opening fetches fresh.
+        cachedPayload = null;
+
+        setStatus('Scheduled.', 'success');
+        setTimeout(close, 350);
       } else {
         if (btn) btn.disabled = false;
         const e = await res.json().catch(() => ({}));

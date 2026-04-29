@@ -1,0 +1,355 @@
+---
+// Side-panel (desktop) / bottom-sheet (mobile) showing a single suggestion's
+// full detail. Embedded once per page; opens when any element dispatches a
+// `view-suggestion` custom event with { detail: { suggestionId } }.
+//
+// Listens to `suggestion-scheduled` / `suggestion-unscheduled` events so its
+// own state stays in sync if the user takes an action on the same suggestion
+// from elsewhere on the page (or from inside the panel).
+
+interface Props {
+  slate: { id: string; slug: string; name: string; timezone: string };
+  isMember: boolean;
+  isSpeaker: boolean;
+  isAdmin: boolean;
+  currentUserId?: string;
+}
+
+const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
+---
+
+<div
+  id="detail-panel-root"
+  data-slate-id={slate.id}
+  data-slate-slug={slate.slug}
+  data-slate-tz={slate.timezone}
+  data-state="closed"
+  class="hidden fixed inset-0 z-50"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="detail-panel-title"
+>
+  <div id="detail-panel-backdrop"
+       class="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-200"></div>
+
+  <aside
+    id="detail-panel-pane"
+    class="absolute bg-base-100 shadow-2xl flex flex-col
+           bottom-0 inset-x-0 h-[85dvh] rounded-t-xl translate-y-full
+           md:bottom-auto md:inset-x-auto md:top-0 md:right-0 md:h-full md:w-[520px] md:rounded-none md:translate-x-full md:translate-y-0
+           transition-transform duration-200"
+  >
+    <header class="flex items-start gap-3 p-4 border-b border-base-300 shrink-0">
+      <div class="flex-1 min-w-0">
+        <p class="font-mono text-xs text-signal" id="detail-panel-state-label">// loading</p>
+        <h2 id="detail-panel-title" class="font-bold text-lg mt-1 break-words leading-tight">…</h2>
+      </div>
+      <button id="detail-panel-close" type="button" aria-label="Close"
+              class="btn btn-ghost btn-sm btn-square -mr-1 -mt-1 shrink-0">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M6 6l12 12M6 18L18 6"/>
+        </svg>
+      </button>
+    </header>
+
+    <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+      <div id="detail-panel-body" class="p-4 space-y-5">
+        <p id="detail-panel-loading" class="text-sm opacity-60">Loading…</p>
+        <p id="detail-panel-error" class="hidden text-sm text-error"></p>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script
+  is:inline
+  define:vars={{
+    isMember,
+    isSpeaker,
+    isAdmin,
+    currentUserId: currentUserId ?? null,
+  }}
+>
+  (() => {
+    const root = document.getElementById('detail-panel-root');
+    if (!root) return;
+    const slateTz = root.dataset.slateTz;
+    const slateSlug = root.dataset.slateSlug;
+    const pane = document.getElementById('detail-panel-pane');
+    const backdrop = document.getElementById('detail-panel-backdrop');
+    const titleEl = document.getElementById('detail-panel-title');
+    const stateLabel = document.getElementById('detail-panel-state-label');
+    const body = document.getElementById('detail-panel-body');
+    const closeBtn = document.getElementById('detail-panel-close');
+
+    let activeId = null;
+    let savedScrollY = 0;
+
+    const isDesktop = () => matchMedia('(min-width: 768px)').matches;
+
+    function lockBodyScroll() {
+      savedScrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${savedScrollY}px`;
+      document.body.style.left = '0';
+      document.body.style.right = '0';
+      document.body.style.width = '100%';
+    }
+    function unlockBodyScroll() {
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.left = '';
+      document.body.style.right = '';
+      document.body.style.width = '';
+      window.scrollTo(0, savedScrollY);
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+    function relativeTime(seconds) {
+      const diff = Math.floor(Date.now() / 1000) - seconds;
+      const day = 86400;
+      if (diff < 60) return 'just now';
+      if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+      if (diff < day) return `${Math.floor(diff / 3600)}h ago`;
+      if (diff < 7 * day) return `${Math.floor(diff / day)}d ago`;
+      if (diff < 30 * day) return `${Math.floor(diff / (7 * day))}w ago`;
+      if (diff < 365 * day) return `${Math.floor(diff / (30 * day))}mo ago`;
+      return `${Math.floor(diff / (365 * day))}y ago`;
+    }
+    const fmtSched = new Intl.DateTimeFormat('en-US', {
+      timeZone: slateTz, weekday: 'long', month: 'short', day: 'numeric',
+      year: 'numeric', hour: 'numeric', minute: '2-digit',
+    });
+
+    async function open(suggestionId) {
+      activeId = suggestionId;
+      titleEl.textContent = '…';
+      stateLabel.textContent = '// loading';
+      body.innerHTML = '<p class="text-sm opacity-60">Loading…</p>';
+      root.classList.remove('hidden');
+      void pane.offsetWidth;
+      pane.classList.remove('translate-y-full', 'md:translate-x-full');
+      backdrop.classList.remove('opacity-0');
+      root.dataset.state = 'open';
+      lockBodyScroll();
+
+      try {
+        const res = await fetch(`/api/suggestions/${suggestionId}`);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error ?? `status ${res.status}`);
+        }
+        const { suggestion } = await res.json();
+        if (activeId === suggestionId) render(suggestion);
+      } catch (err) {
+        body.innerHTML = `<p class="text-sm text-error">Couldn't load suggestion: ${escapeHtml(err.message ?? '')}</p>`;
+      }
+    }
+
+    function close() {
+      pane.classList.add(isDesktop() ? 'md:translate-x-full' : 'translate-y-full');
+      backdrop.classList.add('opacity-0');
+      setTimeout(() => {
+        root.classList.add('hidden');
+        root.dataset.state = 'closed';
+        activeId = null;
+        unlockBodyScroll();
+      }, 200);
+    }
+
+    function render(s) {
+      titleEl.textContent = s.title;
+      const isOpen = s.status === 'open';
+      const isScheduled = s.status === 'scheduled';
+      const isArchived = s.status === 'archived';
+      stateLabel.textContent = isOpen ? '// open · awaiting a date'
+        : isScheduled ? '// scheduled'
+        : isArchived ? '// archived'
+        : `// ${s.status}`;
+
+      const canUnschedule = isScheduled && s.scheduled &&
+        (s.scheduled.speaker_id === currentUserId || isAdmin);
+
+      // ── Vote + meta header
+      const voteBlock = isMember ? `
+        <button type="button" id="dp-vote"
+                data-id="${escapeHtml(s.id)}"
+                class="flex items-center gap-2 rounded border border-base-300 px-3 py-2 hover:bg-base-200 transition-colors"
+                aria-label="Toggle upvote">
+          <span data-vote-arrow class="${s.has_voted ? 'text-signal' : 'opacity-50'}">▲</span>
+          <span data-vote-count class="font-mono text-sm ${s.has_voted ? 'text-signal font-bold' : 'opacity-80'}">${s.upvote_count}</span>
+          <span class="text-xs opacity-60">${s.upvote_count === 1 ? 'vote' : 'votes'}</span>
+        </button>
+      ` : `
+        <div class="flex items-center gap-2 rounded border border-base-300 px-3 py-2 opacity-60">
+          <span>▲</span>
+          <span class="font-mono text-sm">${s.upvote_count}</span>
+          <span class="text-xs">${s.upvote_count === 1 ? 'vote' : 'votes'}</span>
+        </div>
+      `;
+
+      const tags = s.tags ? s.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+      const tagsBlock = tags.length > 0 ? `
+        <div class="flex flex-wrap gap-1">
+          ${tags.map(t => `<span class="text-xs font-mono opacity-70 border border-base-300 rounded px-1.5 py-0.5">${escapeHtml(t)}</span>`).join('')}
+        </div>
+      ` : '';
+
+      // ── Scheduled block
+      const schedBlock = isScheduled && s.scheduled ? `
+        <section class="rounded border border-base-300 bg-base-200/40 p-4 space-y-2">
+          <p class="font-mono text-xs text-signal">// scheduled for</p>
+          <p class="font-semibold">${escapeHtml(fmtSched.format(new Date(s.scheduled.start_time * 1000)))}</p>
+          <p class="text-xs opacity-70 font-mono">${escapeHtml(slateTz)} · ${s.scheduled.duration_minutes}min</p>
+          ${s.scheduled.speaker_email ? `<p class="text-sm">Speaker: <span class="font-mono opacity-80">${escapeHtml(s.scheduled.speaker_email)}</span></p>` : ''}
+          <p class="pt-1">
+            <a href="/${escapeHtml(slateSlug)}/slot/${escapeHtml(s.scheduled.slot_id)}" class="text-sm link">View slot details →</a>
+          </p>
+        </section>
+      ` : '';
+
+      // ── Action row
+      const actions = [];
+      if (isSpeaker && isOpen) {
+        actions.push(`
+          <button type="button" id="dp-claim" class="btn btn-primary"
+                  data-suggestion-id="${escapeHtml(s.id)}"
+                  data-suggestion-title="${escapeHtml(s.title)}">
+            Claim &amp; schedule
+          </button>
+        `);
+      }
+      if (canUnschedule) {
+        actions.push(`
+          <button type="button" id="dp-unschedule"
+                  data-slot-id="${escapeHtml(s.scheduled.slot_id)}"
+                  data-suggestion-title="${escapeHtml(s.title)}"
+                  class="text-sm opacity-70 hover:opacity-100 hover:text-error transition-colors">
+            Unschedule
+          </button>
+        `);
+      }
+      const actionsBlock = actions.length > 0 ? `
+        <div class="flex items-center gap-4 pt-2">
+          ${actions.join('')}
+        </div>
+      ` : '';
+
+      // ── Compose
+      body.innerHTML = `
+        ${s.description ? `<p class="text-sm leading-relaxed whitespace-pre-wrap">${escapeHtml(s.description)}</p>` : '<p class="text-sm opacity-50 italic">No description.</p>'}
+        ${s.url ? `<p><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" class="link text-sm break-all">${escapeHtml(s.url)} ↗</a></p>` : ''}
+        ${tagsBlock}
+        <div class="flex items-center gap-3 text-xs opacity-70 font-mono">
+          <span>by ${escapeHtml(s.author.email)}</span>
+          <span class="opacity-60">·</span>
+          <span>${escapeHtml(relativeTime(s.submitted_at))}</span>
+        </div>
+        <div class="pt-2">${voteBlock}</div>
+        ${schedBlock}
+        ${actionsBlock}
+      `;
+
+      // Bind interactive elements inside the panel
+      const voteBtn = body.querySelector('#dp-vote');
+      voteBtn?.addEventListener('click', async () => {
+        voteBtn.disabled = true;
+        const res = await fetch(`/api/suggestions/${voteBtn.dataset.id}/vote`, { method: 'POST' });
+        if (res.ok) {
+          const b = await res.json();
+          const voted = !!b.has_voted;
+          const arrow = voteBtn.querySelector('[data-vote-arrow]');
+          const count = voteBtn.querySelector('[data-vote-count]');
+          arrow.classList.toggle('text-signal', voted);
+          arrow.classList.toggle('opacity-50', !voted);
+          count.classList.toggle('text-signal', voted);
+          count.classList.toggle('font-bold', voted);
+          count.classList.toggle('opacity-80', !voted);
+          count.textContent = b.upvote_count;
+          // Mirror the change on the underlying card so closing the panel
+          // shows the same state
+          const card = document.querySelector(`[data-suggestion-card="${voteBtn.dataset.id}"]`);
+          if (card) {
+            card.classList.toggle('border-signal', voted);
+            card.classList.toggle('border-base-300', !voted);
+            const cardArrow = card.querySelector('[data-vote-arrow]');
+            const cardCount = card.querySelector('[data-vote-count]');
+            if (cardArrow) {
+              cardArrow.classList.toggle('text-signal', voted);
+              cardArrow.classList.toggle('opacity-40', !voted);
+            }
+            if (cardCount) {
+              cardCount.classList.toggle('text-signal', voted);
+              cardCount.classList.toggle('font-bold', voted);
+              cardCount.classList.toggle('opacity-70', !voted);
+              cardCount.textContent = b.upvote_count;
+            }
+          }
+        }
+        voteBtn.disabled = false;
+      });
+
+      const claimBtn = body.querySelector('#dp-claim');
+      claimBtn?.addEventListener('click', () => {
+        // Close the detail panel and let the schedule panel take over.
+        close();
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('schedule-suggestion', {
+            detail: {
+              suggestionId: claimBtn.dataset.suggestionId,
+              suggestionTitle: claimBtn.dataset.suggestionTitle,
+            },
+          }));
+        }, 220);
+      });
+
+      const unBtn = body.querySelector('#dp-unschedule');
+      unBtn?.addEventListener('click', async () => {
+        if (!confirm(`Unschedule "${unBtn.dataset.suggestionTitle}"? The slot goes back to open.`)) return;
+        unBtn.disabled = true;
+        const slotId = unBtn.dataset.slotId;
+        const res = await fetch(`/api/slots/${slotId}/claim-and-schedule`, { method: 'DELETE' });
+        if (res.ok) {
+          const data = await res.json();
+          window.dispatchEvent(new CustomEvent('slot-updated', {
+            detail: { slotId, status: 'open', title: null },
+          }));
+          if (data.freed_suggestion_id) {
+            window.dispatchEvent(new CustomEvent('suggestion-unscheduled', {
+              detail: { suggestionId: data.freed_suggestion_id },
+            }));
+          }
+          // Re-render this panel with fresh data so it shows the new "open" state
+          if (activeId) open(activeId);
+        } else {
+          unBtn.disabled = false;
+          alert((await res.json().catch(() => ({}))).error ?? res.status);
+        }
+      });
+    }
+
+    // ── Stay in sync if the suggestion changes elsewhere on the page
+    window.addEventListener('suggestion-scheduled', (e) => {
+      const id = e.detail?.suggestionId;
+      if (id && id === activeId && root.dataset.state === 'open') open(id);
+    });
+    window.addEventListener('suggestion-unscheduled', (e) => {
+      const id = e.detail?.suggestionId;
+      if (id && id === activeId && root.dataset.state === 'open') open(id);
+    });
+
+    window.addEventListener('view-suggestion', (e) => {
+      const id = e.detail?.suggestionId;
+      if (id) open(id);
+    });
+    closeBtn.addEventListener('click', close);
+    backdrop.addEventListener('click', close);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && root.dataset.state === 'open') close();
+    });
+  })();
+</script>

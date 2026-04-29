@@ -27,8 +27,8 @@ export const POST: APIRoute = async (ctx) => {
 
     const db = getDb(ctx);
     const slot = await db.prepare(
-      'SELECT slate_id, status, speaker_id, suggestion_id FROM slots WHERE id = ?',
-    ).bind(slotId).first<{ slate_id: string; status: string; speaker_id: string | null; suggestion_id: string | null }>();
+      'SELECT slate_id, status, speaker_id, suggestion_id, start_time, duration_minutes FROM slots WHERE id = ?',
+    ).bind(slotId).first<{ slate_id: string; status: string; speaker_id: string | null; suggestion_id: string | null; start_time: number; duration_minutes: number }>();
     if (!slot) throw new HttpError(404, 'slot_not_found');
     if (slot.status === 'cancelled') throw new HttpError(409, 'slot_cancelled');
 
@@ -78,7 +78,15 @@ export const POST: APIRoute = async (ctx) => {
       suggestionId,
     });
 
-    return jsonOk({ slot_id: slotId, suggestion_id: suggestionId, status: 'confirmed' });
+    return jsonOk({
+      slot_id: slotId,
+      suggestion_id: suggestionId,
+      status: 'confirmed',
+      start_time: slot.start_time,
+      duration_minutes: slot.duration_minutes,
+      speaker_id: user.id,
+      speaker_email: user.email,
+    });
   } catch (err) { return jsonError(err); }
 };
 
@@ -125,6 +133,10 @@ export const DELETE: APIRoute = async (ctx) => {
       suggestionId: slot.suggestion_id ?? null,
     });
 
-    return jsonOk({ slot_status: 'open' });
+    return jsonOk({
+      slot_id: slotId,
+      slot_status: 'open',
+      freed_suggestion_id: slot.suggestion_id,
+    });
   } catch (err) { return jsonError(err); }
 };

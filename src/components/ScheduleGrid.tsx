@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 export interface PublicSlot {
   id: string;
@@ -30,7 +30,25 @@ const STATUS_COLORS: Record<PublicSlot['status'], string> = {
   cancelled: 'bg-base-200 text-base-content/40 line-through border-base-300',
 };
 
-export default function ScheduleGrid({ slots, timezone, slateSlug, view = 'all' }: Props) {
+export default function ScheduleGrid({ slots: initialSlots, timezone, slateSlug, view = 'all' }: Props) {
+  // Hold slots in local state so we can reactively update individual cells
+  // when other parts of the page schedule/unschedule (no full reload).
+  const [slots, setSlots] = useState(initialSlots);
+
+  useEffect(() => {
+    function onSlotUpdated(e: Event) {
+      const detail = (e as CustomEvent).detail as { slotId?: string; status?: PublicSlot['status']; title?: string | null } | undefined;
+      if (!detail?.slotId) return;
+      setSlots(prev => prev.map(s =>
+        s.id === detail.slotId
+          ? { ...s, status: detail.status ?? s.status, title: detail.title ?? null }
+          : s
+      ));
+    }
+    window.addEventListener('slot-updated', onSlotUpdated);
+    return () => window.removeEventListener('slot-updated', onSlotUpdated);
+  }, []);
+
   const fmt = useMemo(() => ({
     monthHeader: new Intl.DateTimeFormat('en-US', { timeZone: timezone, month: 'long', year: 'numeric' }),
     day: new Intl.DateTimeFormat('en-US', { timeZone: timezone, day: 'numeric' }),
