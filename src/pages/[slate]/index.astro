@@ -106,36 +106,12 @@ const url = new URL(Astro.request.url);
 const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
 ---
 
-<Layout title={`${slate.name} · slate.ljs.app`} description={slate.description ?? undefined} slate={{ name: slate.name, slug: slate.slug }}>
-  <section class="py-6">
-    <h1 class="text-3xl md:text-4xl font-bold tracking-tight">{slate.name}</h1>
-    {slate.description && <p class="opacity-80 mt-2 max-w-prose">{slate.description}</p>}
-
-    <div class="flex flex-wrap gap-2 mt-4">
-      {!user && (
-        <a href={signInHref} class="btn btn-primary btn-sm">Sign In / Sign Up</a>
-      )}
-      {user && !isMember && (
-        <button id="join-btn" class="btn btn-primary btn-sm">Join as Member</button>
-      )}
-      {isMember && <span class="badge badge-success badge-outline">{member?.role}</span>}
-      {isMember && (
-        <>
-          <a href={`/${slate.slug}/suggest`} class="btn btn-primary btn-sm">+ Suggest a topic</a>
-          <a href={`/${slate.slug}/activity`} class="btn btn-ghost btn-sm border border-base-300 relative">
-            Activity
-            {unreadActivity > 0 && (
-              <span class="badge badge-primary badge-sm ml-2">{unreadActivity}</span>
-            )}
-          </a>
-        </>
-      )}
-      {isSpeaker && (
-        <a href={`/${slate.slug}/admin`} class="btn btn-ghost btn-sm border border-base-300">Speaker admin →</a>
-      )}
-    </div>
-  </section>
-
+<Layout
+  title={`${slate.name} · slate.ljs.app`}
+  description={slate.description ?? undefined}
+  slate={{ name: slate.name, slug: slate.slug }}
+  slateContext={{ isMember, isSpeaker, role: member?.role as 'member' | 'speaker' | undefined ?? null, unreadActivity }}
+>
   {/* Mobile-only tab bar — sticky to viewport top so the user can switch
       between Topics and Schedule without scrolling back up. */}
   <div class="lg:hidden sticky top-0 z-20 bg-base-100/95 backdrop-blur border-b border-base-300 -mx-4 mb-4">
@@ -153,8 +129,19 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
   <div data-active-tab="topics" class="lg:grid lg:grid-cols-2 lg:gap-8 lg:items-start">
     {/* TOPICS pane */}
     <section data-panel="topics" aria-label="Topic suggestions">
-      <header class="hidden lg:flex items-baseline justify-between mb-3">
-        <h2 class="text-lg font-semibold">Topics <span class="text-sm opacity-50 font-normal ml-1">{totalCount}</span></h2>
+      <header class="flex items-baseline justify-between gap-3 mb-3 mt-4 lg:mt-0">
+        <h2 class="text-lg font-semibold hidden lg:block">Topics <span class="text-sm opacity-50 font-normal ml-1">{totalCount}</span></h2>
+        <div class="ml-auto">
+          {isMember && (
+            <a href={`/${slate.slug}/suggest`} class="btn btn-primary btn-sm">+ Suggest a topic</a>
+          )}
+          {user && !isMember && (
+            <button id="join-btn" class="btn btn-primary btn-sm">Join as Member</button>
+          )}
+          {!user && (
+            <a href={signInHref} class="btn btn-primary btn-sm">Sign in to suggest</a>
+          )}
+        </div>
       </header>
 
       {totalCount === 0 ? (

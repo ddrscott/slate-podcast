@@ -8,14 +8,29 @@ interface Props {
   title?: string;
   description?: string;
   slate?: { name: string; slug: string };
+  // Per-slate context — pages that know the viewer's role and unread-activity
+  // count pass them in so the nav can render the Activity icon, the Manage
+  // shortcut, and the role line in the Account dropdown without re-querying.
+  slateContext?: {
+    isMember: boolean;
+    isSpeaker: boolean;
+    role?: 'member' | 'speaker' | null;
+    unreadActivity?: number;
+  };
   // Override the auto-derived OG image URL for non-slate pages.
   ogImage?: string;
   // Override the auto-derived OG description (defaults to `description`).
   ogDescription?: string;
 }
 
-const { title = 'Slate', description = 'Coordinate a year of podcast slots across a swarm of speakers.', slate, ogImage, ogDescription } = Astro.props;
+const { title = 'Slate', description = 'Coordinate a year of podcast slots across a swarm of speakers.', slate, slateContext, ogImage, ogDescription } = Astro.props;
 const user = Astro.locals.user;
+const userIsAppAdmin = isAppAdmin(user?.scopes);
+const showActivityIcon = !!(slate && slateContext?.isMember);
+const showManageBtn = !!(slate && slateContext?.isSpeaker);
+const unreadActivity = slateContext?.unreadActivity ?? 0;
+const slateRoleLabel = slateContext?.role
+  ?? (slateContext?.isSpeaker ? 'speaker' : slateContext?.isMember ? 'member' : null);
 
 const env = getEnv(Astro);
 const url = new URL(Astro.request.url);
@@ -67,43 +82,75 @@ const computedOgDescription = ogDescription ?? (slate
   <body class="min-h-screen flex flex-col bg-base-100 text-base-content font-sans antialiased">
     <header class="border-b border-base-300">
       <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-        <a href={brandHref} class="font-mono text-base md:text-lg font-bold tracking-tight no-underline truncate min-w-0">
-          <span class="text-signal">{brandLabel}</span><span class="opacity-50 hidden sm:inline"> // slate.ljs.app</span>
+        <a href={brandHref} class="block min-w-0 no-underline" title={brandLabel}>
+          <div class="text-signal text-base md:text-lg font-bold tracking-tight leading-tight truncate font-mono">{brandLabel}</div>
+          <div class="opacity-40 text-[10px] md:text-xs leading-tight font-mono hidden sm:block">// slate.ljs.app</div>
         </a>
 
-        <nav class="text-sm flex items-center gap-4 shrink-0">
+        <nav class="text-sm flex items-center gap-1 sm:gap-2 shrink-0">
+          {showActivityIcon && (
+            <a
+              href={`/${slate!.slug}/activity`}
+              class="relative inline-flex items-center justify-center w-9 h-9 rounded hover:bg-base-200 transition-colors"
+              aria-label={unreadActivity > 0 ? `Activity (${unreadActivity} unread)` : 'Activity'}
+              title="Activity"
+            >
+              <svg class="w-5 h-5 opacity-75" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+              </svg>
+              {unreadActivity > 0 && (
+                <span class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-signal text-[10px] font-bold text-white inline-flex items-center justify-center">
+                  {unreadActivity > 9 ? '9+' : unreadActivity}
+                </span>
+              )}
+            </a>
+          )}
+          {showManageBtn && (
+            <a href={`/${slate!.slug}/admin`} class="px-3 py-1.5 rounded text-sm hover:bg-base-200 hover:text-signal transition-colors">
+              Manage
+            </a>
+          )}
           {user ? (
-            <>
-              <a href="/me" class="opacity-75 hover:opacity-100 hover:text-signal transition-colors">My slates</a>
-              <details id="account-menu" class="dropdown dropdown-end">
-                <summary class="cursor-pointer flex items-center gap-1 opacity-75 hover:opacity-100 hover:text-signal transition-colors list-none [&::-webkit-details-marker]:hidden">
-                  Account
-                  <svg viewBox="0 0 12 12" class="w-2.5 h-2.5 opacity-60" fill="currentColor" aria-hidden="true">
-                    <path d="M6 9L1 4h10z"/>
-                  </svg>
-                </summary>
-                <ul class="dropdown-content z-10 mt-2 w-60 bg-base-100 border border-base-300 rounded shadow-sm py-1 text-sm">
-                  {isAppAdmin(user.scopes) && (
-                    <li>
-                      <a href="/admin" class="block px-3 py-2 hover:bg-base-200 hover:text-signal transition-colors">Admin</a>
-                    </li>
+            <details id="account-menu" class="dropdown dropdown-end">
+              <summary class="cursor-pointer inline-flex items-center gap-1 px-3 py-1.5 rounded hover:bg-base-200 hover:text-signal transition-colors list-none [&::-webkit-details-marker]:hidden">
+                Account
+                <svg viewBox="0 0 12 12" class="w-2.5 h-2.5 opacity-60" fill="currentColor" aria-hidden="true">
+                  <path d="M6 9L1 4h10z"/>
+                </svg>
+              </summary>
+              <ul class="dropdown-content z-10 mt-2 w-72 bg-base-100 border border-base-300 rounded shadow-sm py-1 text-sm">
+                <li class="px-3 py-2 border-b border-base-300">
+                  <div class="font-semibold truncate">{displayName(user)}</div>
+                  <div class="font-mono text-xs opacity-50 truncate mt-0.5">{user.email}</div>
+                  {slate && slateRoleLabel && (
+                    <div class="text-xs opacity-70 mt-1.5">
+                      <span class="font-medium">{slateRoleLabel}</span>
+                      <span class="opacity-60"> · {slate.name}</span>
+                    </div>
                   )}
+                </li>
+                <li>
+                  <a href="/me" class="block px-3 py-2 hover:bg-base-200 hover:text-signal transition-colors">My slates</a>
+                </li>
+                {userIsAppAdmin && (
                   <li>
-                    <a href="/me#profile" class="block px-3 py-2 hover:bg-base-200 hover:text-signal transition-colors">Edit profile</a>
+                    <a href="/admin" class="block px-3 py-2 hover:bg-base-200 hover:text-signal transition-colors">Admin</a>
                   </li>
-                  <li class="border-t border-base-300 mt-1 pt-1">
-                    <form method="POST" action="/api/auth/sign-out" class="contents">
-                      <button type="submit" class="block w-full text-left px-3 py-2 hover:bg-base-200 hover:text-signal transition-colors">
-                        <div>Sign out <span class="opacity-60">{displayName(user)}</span></div>
-                        <div class="font-mono text-xs opacity-50 mt-0.5 truncate">{user.email}</div>
-                      </button>
-                    </form>
-                  </li>
-                </ul>
-              </details>
-            </>
+                )}
+                <li>
+                  <a href="/me#profile" class="block px-3 py-2 hover:bg-base-200 hover:text-signal transition-colors">Edit profile</a>
+                </li>
+                <li class="border-t border-base-300 mt-1 pt-1">
+                  <form method="POST" action="/api/auth/sign-out" class="contents">
+                    <button type="submit" class="block w-full text-left px-3 py-2 hover:bg-base-200 hover:text-signal transition-colors">
+                      Sign out
+                    </button>
+                  </form>
+                </li>
+              </ul>
+            </details>
           ) : (
-            <a href={loginHref} class="opacity-75 hover:opacity-100 hover:text-signal transition-colors">Sign In / Sign Up</a>
+            <a href={loginHref} class="px-3 py-1.5 rounded hover:bg-base-200 hover:text-signal transition-colors">Sign In / Sign Up</a>
           )}
         </nav>
       </div>
