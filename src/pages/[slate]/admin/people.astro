@@ -41,8 +41,8 @@ const members = await db.prepare(
         <h1 class="text-2xl font-bold">People</h1>
         <p class="text-xs opacity-60 mt-1">
           {isAdmin
-            ? 'You can promote/demote here, or use the global admin page for cross-slate management.'
-            : "Speakers see who's on the slate. To promote a Member to Speaker, ask the App Admin."}
+            ? 'You can promote and demote here, or use the global admin page for cross-slate management.'
+            : 'Any Speaker can promote a Member. Demotion is App Admin only.'}
         </p>
       </div>
       {isAdmin && <a href="/admin/people" class="btn btn-sm btn-ghost border border-base-300">Cross-slate ↗</a>}
@@ -60,7 +60,7 @@ const members = await db.prepare(
                 <span class={`badge badge-xs ${m.role === 'speaker' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>
               </div>
             </div>
-            {isAdmin && m.role === 'member' && (
+            {m.role === 'member' && (
               <button data-uid={m.user_id} data-action="promote"
                       class="member-action btn btn-xs btn-primary">promote</button>
             )}

@@ -27,7 +27,8 @@ App-Admins implicitly have Speaker rights on every slate. Speakers implicitly ha
 | Edit scheduling rules | — | ✓ | ✓ |
 | Regenerate slots | — | ✓ | ✓ |
 | Bulk-edit slots in the AG Grid view | — | ✓ | ✓ |
-| Promote Member ↔ Speaker | — | — | ✓ |
+| Promote Member → Speaker | — | ✓ | ✓ |
+| Demote Speaker → Member | — | — | ✓ |
 | Edit slate settings (slug / timezone / visibility) | — | — | ✓ |
 | Create a slate | — | — | ✓ |
 | Archive a suggestion | — | ✓ | ✓ |

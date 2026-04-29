@@ -1,6 +1,8 @@
 # Promote a Member to Speaker (or demote one)
 
-Members can post and upvote suggestions. **Speakers** can claim slots, write show notes, and edit slate rules. Only App-Admins can change roles.
+Members can post and upvote suggestions. **Speakers** can claim slots, write show notes, and edit slate rules.
+
+**Promotion** is peer — any Speaker on the slate can promote a Member. **Demotion** is App-Admin only, by design: peer-promote is additive and safe, but speaker-on-speaker demotion would enable coups.
 
 ## Promote
 
@@ -12,7 +14,7 @@ The change is live immediately. They'll see the Speaker actions on their next pa
 
 ## Demote
 
-Same page, **Speakers** list, click **Demote**. They revert to Member. Slots they own stay theirs (we don't auto-orphan slots) — but another Speaker can boot them off any slot afterward.
+Same page, **Speakers** list, click **Demote** (App-Admin only). They revert to Member. Slots they own stay theirs (we don't auto-orphan slots) — but another Speaker can boot them off any slot afterward.
 
 ## Speakers booting other Speakers
 

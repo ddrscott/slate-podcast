@@ -1,16 +1,21 @@
 import type { APIRoute } from 'astro';
 import { getDb, now } from '@/lib/db';
-import { HttpError, jsonError, jsonOk, requireAppAdmin } from '@/lib/access';
+import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate, requireUser } from '@/lib/access';
 import { logActivity } from '@/lib/activity';
 
 export const prerender = false;
 
-// Promote a Member to Speaker. App Admin only.
+// Promote a Member to Speaker. Allowed for any Speaker on the slate
+// (or App Admin via the Speaker check's implicit pass-through). Promotion
+// is additive, so peer-promote is the trust model — demotion stays
+// App-Admin to avoid speaker-on-speaker coups.
+//
 // If the user isn't a member yet, they're inserted as a Speaker directly.
 export const POST: APIRoute = async (ctx) => {
   try {
-    const admin = requireAppAdmin(ctx);
+    const caller = requireUser(ctx);
     const slateId = ctx.params.id!;
+    await requireSpeakerOnSlate(ctx, slateId);
     const body = await ctx.request.json() as { user_id?: string; email?: string };
 
     const db = getDb(ctx);
@@ -35,12 +40,12 @@ export const POST: APIRoute = async (ctx) => {
          role = 'speaker',
          promoted_at = excluded.promoted_at,
          promoted_by = excluded.promoted_by`,
-    ).bind(slateId, userId, t, t, admin.id).run();
+    ).bind(slateId, userId, t, t, caller.id).run();
 
     await logActivity(ctx, {
       kind: 'speaker_promoted',
       slateId,
-      actorId: admin.id,
+      actorId: caller.id,
       targetUserId: userId,
     });
 
