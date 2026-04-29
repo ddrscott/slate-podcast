@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getDb } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate, requireUser } from '@/lib/access';
-import { logActivity } from '@/lib/activity';
+import { Enqueue } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -34,11 +34,8 @@ export const PATCH: APIRoute = async (ctx) => {
 
     // Archiving is a notable moderation event — log it.
     if (body.status === 'archived' && sug.status !== 'archived') {
-      await logActivity(ctx, {
-        kind: 'suggestion_archived',
-        slateId: sug.slate_id,
-        actorId: caller.id,
-        suggestionId: id,
+      await Enqueue.suggestionArchived(ctx, {
+        slateId: sug.slate_id, actorId: caller.id, suggestionId: id,
       });
     }
 

@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { getDb, now } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireUser } from '@/lib/access';
 import { isAppAdmin } from '@/lib/auth';
-import { logActivity } from '@/lib/activity';
+import { Enqueue } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -45,13 +45,8 @@ export const POST: APIRoute = async (ctx) => {
       // Topic detached. If the slot was scheduled-or-later, this is an
       // unschedule event in the activity feed.
       if (wasConfirmedLike && slot.suggestion_id) {
-        await logActivity(ctx, {
-          kind: 'slot_unscheduled',
-          slateId: slot.slate_id,
-          actorId: caller.id,
-          slotId,
-          suggestionId: slot.suggestion_id,
-          meta: { topic_detached: true },
+        await Enqueue.topicDetached(ctx, {
+          slateId: slot.slate_id, actorId: caller.id, slotId, suggestionId: slot.suggestion_id,
         });
       }
 
@@ -90,15 +85,15 @@ export const POST: APIRoute = async (ctx) => {
     // already confirmed (just swapping topics), record it as a topic change
     // by attaching the previous suggestion to the meta.
     if (newStatus === 'confirmed') {
-      await logActivity(ctx, {
-        kind: 'slot_scheduled',
+      await Enqueue.slotScheduled(ctx, {
         slateId: slot.slate_id,
         actorId: caller.id,
         slotId,
         suggestionId: body.suggestion_id,
-        meta: slot.suggestion_id && slot.suggestion_id !== body.suggestion_id
-          ? { replaced_suggestion_id: slot.suggestion_id }
-          : undefined,
+        replacedSuggestionId:
+          slot.suggestion_id && slot.suggestion_id !== body.suggestion_id
+            ? slot.suggestion_id
+            : undefined,
       });
     }
 

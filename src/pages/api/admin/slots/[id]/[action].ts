@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getDb, now } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate, requireUser } from '@/lib/access';
-import { logActivity } from '@/lib/activity';
+import { Enqueue } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -19,12 +19,8 @@ export const POST: APIRoute = async (ctx) => {
 
     if (action === 'publish-notes') {
       await db.prepare('UPDATE slots SET show_notes_published_at = ? WHERE id = ?').bind(now(), slotId).run();
-      await logActivity(ctx, {
-        kind: 'notes_published',
-        slateId: slot.slate_id,
-        actorId: user.id,
-        slotId,
-        suggestionId: slot.suggestion_id,
+      await Enqueue.notesPublished(ctx, {
+        slateId: slot.slate_id, actorId: user.id, slotId, suggestionId: slot.suggestion_id,
       });
       return jsonOk({ published_at: now() });
     }

@@ -1,8 +1,9 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import ActivityTokens from '@/components/ActivityTokens.astro';
 import { getDb } from '@/lib/db';
 import { signInUrlForCtx, isAppAdmin } from '@/lib/auth';
-import { displayName } from '@/lib/people';
+import { renderActivity } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -61,18 +62,7 @@ const fmtSlotTime = (sec: number) => new Intl.DateTimeFormat('en-US', {
   hour: 'numeric', minute: '2-digit',
 }).format(new Date(sec * 1000));
 
-const KIND_LABEL: Record<string, string> = {
-  member_joined:        'joined as a Member',
-  speaker_promoted:     'was promoted to Speaker by',
-  speaker_demoted:      'was demoted to Member by',
-  speaker_substituted:  'subbed in for',
-  suggestion_posted:    'suggested',
-  suggestion_archived:  'archived',
-  slot_scheduled:       'scheduled',
-  slot_unscheduled:     'unscheduled',
-  notes_published:      'published show notes for',
-  slate_renamed:        'renamed the slate',
-};
+const renderCtx = { slug: slug!, fmtSlotTime };
 
 const unreadCount = rows.results.filter((r: any) => r.created_at > watermark).length;
 ---
@@ -102,89 +92,14 @@ const unreadCount = rows.results.filter((r: any) => r.created_at > watermark).le
       )}
       {rows.results.map((r: any) => {
         const isNew = r.created_at > watermark;
-        const verb = KIND_LABEL[r.kind] ?? r.kind;
         const meta = r.meta ? JSON.parse(r.meta) : {};
+        const tokens = renderActivity({ ...r, meta }, renderCtx);
         return (
           <li class={`flex items-start gap-3 p-3 border rounded ${isNew ? 'border-signal bg-signal-50' : 'border-base-300 bg-base-100 opacity-90'}`}>
             <div class={`mt-1 h-2 w-2 rounded-full shrink-0 ${isNew ? 'bg-signal' : 'bg-base-300'}`} aria-hidden="true"></div>
             <div class="flex-1 min-w-0">
-              <p class="text-sm">
-                {/* member_joined / suggestion_posted / suggestion_archived /
-                    slot_scheduled / slot_unscheduled / notes_published */}
-                {(r.kind === 'member_joined' ||
-                  r.kind === 'suggestion_posted' ||
-                  r.kind === 'suggestion_archived' ||
-                  r.kind === 'slot_scheduled' ||
-                  r.kind === 'slot_unscheduled' ||
-                  r.kind === 'notes_published') && (
-                  <>
-                    <span class="font-mono opacity-80">{r.actor_email ? displayName({ display_name: r.actor_display_name, email: r.actor_email }) : 'someone'}</span>
-                    <span class="opacity-75"> {r.kind === 'slot_unscheduled' && meta.release ? 'released' : verb}</span>
-                    {r.suggestion_title && (
-                      <>
-                        {' '}
-                        <a href={`/${slug}/suggestions`} class="font-semibold link link-hover">"{r.suggestion_title}"</a>
-                      </>
-                    )}
-                    {(r.kind === 'slot_scheduled' || r.kind === 'slot_unscheduled') && r.slot_start && (
-                      <>
-                        {' '}
-                        <span class="opacity-75">{r.kind === 'slot_scheduled' ? 'for' : 'on'}</span>
-                        {' '}
-                        <a href={`/${slug}/slot/${r.slot_id}`} class="font-mono text-xs underline-offset-2 hover:underline">
-                          {fmtSlotTime(r.slot_start)}
-                        </a>
-                      </>
-                    )}
-                  </>
-                )}
-
-                {/* speaker_promoted / speaker_demoted — target + actor */}
-                {(r.kind === 'speaker_promoted' || r.kind === 'speaker_demoted') && (
-                  <>
-                    <span class="font-mono opacity-80">{r.target_email ? displayName({ display_name: r.target_display_name, email: r.target_email }) : '(removed)'}</span>
-                    <span class="opacity-75"> {verb}</span>
-                    {' '}
-                    <span class="font-mono opacity-60">{r.actor_email ? displayName({ display_name: r.actor_display_name, email: r.actor_email }) : 'an admin'}</span>
-                  </>
-                )}
-
-                {/* speaker_substituted — actor (new speaker) covered for target (previous speaker) */}
-                {r.kind === 'speaker_substituted' && (
-                  <>
-                    <span class="font-mono opacity-80">{r.actor_email ? displayName({ display_name: r.actor_display_name, email: r.actor_email }) : 'someone'}</span>
-                    <span class="opacity-75"> subbed in for </span>
-                    <span class="font-mono opacity-80">{r.target_email ? displayName({ display_name: r.target_display_name, email: r.target_email }) : '(unknown)'}</span>
-                    {r.suggestion_title && (
-                      <>
-                        {' '}
-                        <span class="opacity-75">on</span>
-                        {' '}
-                        <a href={`/${slug}/suggestions`} class="font-semibold link link-hover">"{r.suggestion_title}"</a>
-                      </>
-                    )}
-                    {r.slot_start && (
-                      <>
-                        {' '}
-                        <span class="opacity-75">·</span>
-                        {' '}
-                        <a href={`/${slug}/slot/${r.slot_id}`} class="font-mono text-xs underline-offset-2 hover:underline">
-                          {fmtSlotTime(r.slot_start)}
-                        </a>
-                      </>
-                    )}
-                  </>
-                )}
-
-                {/* slate_renamed */}
-                {r.kind === 'slate_renamed' && meta.from && meta.to && (
-                  <>
-                    <span class="opacity-75">{verb}: </span>
-                    <span class="font-mono opacity-60 line-through">{meta.from}</span>
-                    <span class="opacity-50"> → </span>
-                    <span class="font-mono">{meta.to}</span>
-                  </>
-                )}
+              <p class="text-sm leading-relaxed">
+                <ActivityTokens tokens={tokens} />
               </p>
               <p class="text-xs opacity-50 font-mono mt-1">{fmtRel(r.created_at)}</p>
             </div>

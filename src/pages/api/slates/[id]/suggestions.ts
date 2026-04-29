@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { fingerprint, getDb, now, randomId } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireMemberOnSlate } from '@/lib/access';
-import { logActivity } from '@/lib/activity';
+import { Enqueue } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -79,13 +79,7 @@ export const POST: APIRoute = async (ctx) => {
     ).bind(id, slateId, user.id, title, body.description ?? null, body.url ?? null,
            body.tags ?? null, fp, now()).run();
 
-    await logActivity(ctx, {
-      kind: 'suggestion_posted',
-      slateId,
-      actorId: user.id,
-      suggestionId: id,
-      meta: { title },
-    });
+    await Enqueue.suggestionPosted(ctx, { slateId, actorId: user.id, suggestionId: id, title });
 
     return jsonOk({ suggestion: { id, title, fingerprint: fp } }, 201);
   } catch (err) { return jsonError(err); }

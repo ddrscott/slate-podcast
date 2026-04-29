@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getDb, now } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate, requireUser } from '@/lib/access';
-import { logActivity } from '@/lib/activity';
+import { Enqueue } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -42,12 +42,7 @@ export const POST: APIRoute = async (ctx) => {
          promoted_by = excluded.promoted_by`,
     ).bind(slateId, userId, t, t, caller.id).run();
 
-    await logActivity(ctx, {
-      kind: 'speaker_promoted',
-      slateId,
-      actorId: caller.id,
-      targetUserId: userId,
-    });
+    await Enqueue.speakerPromoted(ctx, { slateId, actorId: caller.id, targetUserId: userId });
 
     return jsonOk({ user_id: userId, role: 'speaker' });
   } catch (err) { return jsonError(err); }

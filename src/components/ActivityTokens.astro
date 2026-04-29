@@ -1,0 +1,49 @@
+---
+// Renders a token stream produced by `renderActivity()`. Each token type
+// has one rendering rule here; everything kind-specific lives in
+// src/lib/activity.ts. Adding a new token type is the only reason to
+// touch this file.
+
+import type { Token } from '@/lib/activity';
+
+interface Props {
+  tokens: Token[];
+}
+
+const { tokens } = Astro.props;
+---
+
+{tokens.map((t) => {
+  switch (t.type) {
+    case 'text':
+      return <Fragment>{t.value}</Fragment>;
+    case 'name':
+      return (
+        <span class={t.opacity === 'secondary' ? 'font-mono opacity-60' : 'font-mono opacity-80'}>
+          {t.value}
+        </span>
+      );
+    case 'suggestion':
+      return (
+        <Fragment>
+          "<a href={t.href} class="font-semibold link link-hover">{t.title}</a>"
+        </Fragment>
+      );
+    case 'slot':
+      return (
+        <a href={t.href} class="font-mono text-xs underline-offset-2 hover:underline">
+          {t.label}
+        </a>
+      );
+    case 'rename':
+      return (
+        <Fragment>
+          <span class="font-mono opacity-60 line-through">{t.from}</span>
+          <span class="opacity-50"> → </span>
+          <span class="font-mono">{t.to}</span>
+        </Fragment>
+      );
+    default:
+      return null;
+  }
+})}

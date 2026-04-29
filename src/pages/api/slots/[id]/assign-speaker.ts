@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { getDb } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate, requireUser } from '@/lib/access';
 import { isAppAdmin } from '@/lib/auth';
-import { logActivity } from '@/lib/activity';
+import { Enqueue } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -54,18 +54,16 @@ export const POST: APIRoute = async (ctx) => {
     // that fires when the topic also lands (claim-and-schedule, or topic.ts
     // turning the slot 'confirmed').
     //
-    // We set target_user_id to the speaker who got covered for (previousSpeakerId),
-    // so the activity feed's existing actor+target join renders naturally:
-    // "{actor} subbed in for {target}". The new speaker's id lives in meta.
+    // The Enqueue helper hides the target_user_id convention (previous
+    // speaker → covered-for) so the activity feed renders correctly.
     if (isSubstitution) {
-      await logActivity(ctx, {
-        kind: 'speaker_substituted',
+      await Enqueue.speakerSubstituted(ctx, {
         slateId: slot.slate_id,
         actorId: caller.id,
         slotId,
-        targetUserId: previousSpeakerId,
         suggestionId: slot.suggestion_id,
-        meta: { new_speaker_id: targetUserId },
+        previousSpeakerId: previousSpeakerId!,
+        newSpeakerId: targetUserId,
       });
     }
 
@@ -106,13 +104,8 @@ export const DELETE: APIRoute = async (ctx) => {
     }
     await db.batch(stmts);
 
-    await logActivity(ctx, {
-      kind: 'slot_unscheduled',
-      slateId: slot.slate_id,
-      actorId: caller.id,
-      slotId,
-      suggestionId: slot.suggestion_id,
-      meta: { release: true },
+    await Enqueue.slotReleased(ctx, {
+      slateId: slot.slate_id, actorId: caller.id, slotId, suggestionId: slot.suggestion_id,
     });
 
     return jsonOk({

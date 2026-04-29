@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getDb, slugify } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate, requireUser } from '@/lib/access';
-import { logActivity } from '@/lib/activity';
+import { Enqueue } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -68,11 +68,8 @@ export const PATCH: APIRoute = async (ctx) => {
     }
 
     if (nameRename) {
-      await logActivity(ctx, {
-        kind: 'slate_renamed',
-        slateId,
-        actorId: caller.id,
-        meta: nameRename,
+      await Enqueue.slateRenamed(ctx, {
+        slateId, actorId: caller.id, ...nameRename,
       });
     }
 

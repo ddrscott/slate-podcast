@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getDb } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireAppAdmin, requireUser } from '@/lib/access';
-import { logActivity } from '@/lib/activity';
+import { Enqueue } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -32,12 +32,8 @@ export const DELETE: APIRoute = async (ctx) => {
        WHERE slate_id = ? AND user_id = ?`,
     ).bind(slateId, targetUserId).run();
 
-    await logActivity(ctx, {
-      kind: 'speaker_demoted',
-      slateId,
-      actorId: caller.id,
-      targetUserId,
-      meta: isSelfDemote ? { self: true } : undefined,
+    await Enqueue.speakerDemoted(ctx, {
+      slateId, actorId: caller.id, targetUserId, self: isSelfDemote,
     });
 
     return jsonOk();
