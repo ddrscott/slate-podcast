@@ -18,10 +18,11 @@ interface Props {
   view?: 'window' | 'all';
 }
 
-// Open is the default "available" state — quiet, so scheduled days and the
-// today ring stand out. Filled colors signal exceptions, not the norm.
+// Open days get an orange outline so they read as "available slot" without
+// the wall-of-color effect of a full fill. Filled colors are reserved for
+// states that signal something taken/done (assigned/confirmed/etc).
 const STATUS_COLORS: Record<PublicSlot['status'], string> = {
-  open:      'bg-base-100 text-base-content/70 border-base-300 hover:bg-signal-50',
+  open:      'bg-base-100 text-signal-700 border-signal-200 hover:bg-signal-50 hover:border-signal-500',
   assigned:  'bg-amber-100 text-amber-800 border-amber-200',
   confirmed: 'bg-emerald-100 text-emerald-800 border-emerald-300',
   recorded:  'bg-sky-100 text-sky-800 border-sky-200',
@@ -184,6 +185,13 @@ function DayCell({ cell, slateSlug, isToday }: {
     ? `/${slateSlug}/slot/${slots[0].id}`
     : `/${slateSlug}/day/${cell.iso}`;
 
+  // Hint at what's there — first slot's title, truncated. Open slots have
+  // no title yet (no topic claimed), so they rely on the orange outline
+  // alone to signal "available". The full title still shows on hover via
+  // the `title` attribute below for desktop users.
+  const hint = dominant !== 'open' ? slots[0].title : null;
+  const extraCount = slots.length > 1 ? slots.length - 1 : 0;
+
   return (
     <a
       href={target}
@@ -191,7 +199,14 @@ function DayCell({ cell, slateSlug, isToday }: {
       title={slots.map(s => `${s.title ?? s.theme ?? '(open)'} — ${s.status}`).join('\n')}
     >
       <div className={`text-right ${isToday ? 'font-bold' : 'opacity-70'}`}>{cell.day}</div>
-      {slots.length > 1 && <div className="mt-auto text-[9px]">×{slots.length}</div>}
+      {hint && (
+        <div className="mt-0.5 text-[10px] leading-tight overflow-hidden text-ellipsis whitespace-nowrap">
+          {hint}
+        </div>
+      )}
+      {extraCount > 0 && (
+        <div className="mt-auto text-[10px] opacity-80">+{extraCount}</div>
+      )}
     </a>
   );
 }
