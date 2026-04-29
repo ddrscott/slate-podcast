@@ -14,8 +14,8 @@ export const prerender = false;
 //  - the slot is `open` (any speaker on the slate can take it), OR
 //  - the slot is `assigned` to the caller (just adding the topic).
 //
-// Boot-another-speaker is intentionally NOT done here — that's a
-// destructive action that should still go through the explicit
+// Subbing in for another speaker is intentionally NOT done here — it's
+// a deliberate ownership change that should go through the explicit
 // /assign-speaker endpoint.
 export const POST: APIRoute = async (ctx) => {
   try {
@@ -35,7 +35,7 @@ export const POST: APIRoute = async (ctx) => {
     await requireSpeakerOnSlate(ctx, slot.slate_id);
 
     // Refuse to overwrite an existing assignment to a different speaker —
-    // that's the boot path and goes through /assign-speaker explicitly.
+    // that's the substitute-in path and goes through /assign-speaker explicitly.
     if (slot.speaker_id && slot.speaker_id !== user.id) {
       throw new HttpError(409, 'slot_taken_by_another_speaker');
     }

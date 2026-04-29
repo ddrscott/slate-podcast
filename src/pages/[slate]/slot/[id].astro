@@ -154,7 +154,7 @@ const availableSuggestions = isSpeaker ? await db.prepare(
               <button id="claim-btn" class="btn btn-primary btn-sm">Claim this slot</button>
             )}
             {slot.speaker_id && !isSlotOwner && (
-              <button id="boot-btn" class="btn btn-warning btn-sm">Boot {slot.speaker_email} & take it</button>
+              <button id="sub-in-btn" class="btn btn-ghost btn-sm border border-base-300">Sub in for {slot.speaker_email}</button>
             )}
             {isSlotOwner && (
               <button id="release-btn" class="btn btn-ghost btn-sm border border-base-300">Release the slot</button>
@@ -250,9 +250,9 @@ const availableSuggestions = isSpeaker ? await db.prepare(
       if (res.ok) location.reload();
       else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
     });
-    document.getElementById('boot-btn')?.addEventListener('click', async () => {
-      if (!confirm("Boot the current speaker and take this slot?")) return;
-      setStatus('Booting…');
+    document.getElementById('sub-in-btn')?.addEventListener('click', async () => {
+      if (!confirm("Sub in for the current speaker on this slot?")) return;
+      setStatus('Subbing in…');
       const res = await fetch(`/api/slots/${slotId}/assign-speaker`, { method: 'POST' });
       if (res.ok) location.reload();
       else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }

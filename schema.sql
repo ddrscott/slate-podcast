@@ -71,7 +71,7 @@ CREATE INDEX IF NOT EXISTS idx_slot_rules_slate ON slot_rules(slate_id, active);
 --   recorded  → speaker marked recorded
 --   published → show notes published
 --   cancelled → coordinator killed it
--- Speakers can boot each other off (overwrite speaker_id).
+-- Speakers can sub in for each other (overwrite speaker_id) — cooperative coverage.
 CREATE TABLE IF NOT EXISTS slots (
   id TEXT PRIMARY KEY,
   slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,

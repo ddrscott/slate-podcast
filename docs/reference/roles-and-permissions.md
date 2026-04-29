@@ -21,7 +21,7 @@ App-Admins implicitly have Speaker rights on every slate. Speakers implicitly ha
 | Upvote a suggestion | ✓ | ✓ | ✓ |
 | Claim a slot | — | ✓ | ✓ |
 | Pick / change a slot's topic | — | ✓ | ✓ |
-| Boot another Speaker off a slot | — | ✓ | ✓ |
+| Sub in for another Speaker on a slot | — | ✓ | ✓ |
 | Write & publish show notes (own slot) | — | ✓ | ✓ |
 | Edit slot status (cancel, reopen) | — | — | ✓ |
 | Edit scheduling rules | — | ✓ | ✓ |

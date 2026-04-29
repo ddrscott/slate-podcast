@@ -4,7 +4,7 @@ import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate, requireUser } from
 
 export const prerender = false;
 
-// Speaker claims a slot (or boots another speaker off it).
+// Speaker claims a slot (or subs in for another speaker on it).
 // Body: optional { user_id } — defaults to caller. Only App Admins can assign others.
 export const POST: APIRoute = async (ctx) => {
   try {

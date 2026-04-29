@@ -14,7 +14,7 @@ The change is live immediately. They'll see the Speaker actions on their next pa
 
 ## Demote
 
-Same page, **Speakers** list, click **Demote** (App-Admin only). They revert to Member. Slots they own stay theirs (we don't auto-orphan slots) — but another Speaker can boot them off any slot afterward.
+Same page, **Speakers** list, click **Demote** (App-Admin only). They revert to Member. Slots they own stay theirs (we don't auto-orphan slots) — but another Speaker can sub in on any slot afterward.
 
 ## Speakers booting other Speakers
 
