@@ -60,7 +60,9 @@ const suggestions = await db.prepare(
   `SELECT s.id, s.title, s.description, s.url, s.upvote_count, s.status,
           s.scheduled_slot_id,
           sl.start_time AS scheduled_start, sl.duration_minutes AS scheduled_duration,
-          sl.speaker_id AS scheduled_speaker_id, spk.email AS scheduled_speaker_email,
+          sl.speaker_id AS scheduled_speaker_id,
+          spk.email AS scheduled_speaker_email,
+          spk.display_name AS scheduled_speaker_display_name,
           (SELECT 1 FROM suggestion_votes v WHERE v.suggestion_id = s.id AND v.user_id = ?) AS has_voted
    FROM suggestions s
    LEFT JOIN slots sl ON sl.id = s.scheduled_slot_id
@@ -72,7 +74,9 @@ const suggestions = await db.prepare(
   upvote_count: number; status: string; has_voted: number | null;
   scheduled_slot_id: string | null;
   scheduled_start: number | null; scheduled_duration: number | null;
-  scheduled_speaker_id: string | null; scheduled_speaker_email: string | null;
+  scheduled_speaker_id: string | null;
+  scheduled_speaker_email: string | null;
+  scheduled_speaker_display_name: string | null;
 }>();
 
 const openCount = suggestions.results.filter(s => s.status === 'open').length;
@@ -330,7 +334,7 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
 
     // ─── Card transitions (driven by panel / unschedule events) ──────────
     function transitionCardToScheduled(detail) {
-      const { suggestionId, slotId, startTime, speakerEmail } = detail;
+      const { suggestionId, slotId, startTime, speakerEmail, speakerName } = detail;
       const card = document.querySelector(`[data-suggestion-card="${suggestionId}"]`);
       if (!card) return;
 
@@ -353,9 +357,10 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
         (desc ?? title)?.after(meta);
       }
       const dateStr = startTime ? fmtSched.format(new Date(startTime * 1000)) : '';
+      const speakerLabel = speakerName || (speakerEmail ? speakerEmail.split('@')[0] : '');
       meta.innerHTML =
         (dateStr ? `<span>${escapeHtml(dateStr)}</span>` : '') +
-        (speakerEmail ? `<span class="opacity-80">→ ${escapeHtml(speakerEmail)}</span>` : '');
+        (speakerLabel ? `<span class="opacity-80">→ ${escapeHtml(speakerLabel)}</span>` : '');
 
       let actions = content.querySelector('[data-card-actions]');
       if (!actions) {

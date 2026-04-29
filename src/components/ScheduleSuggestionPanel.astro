@@ -375,6 +375,7 @@ const { slate } = Astro.props;
             startTime: body.start_time,
             speakerId: body.speaker_id,
             speakerEmail: body.speaker_email,
+            speakerName: body.speaker_display_name || (body.speaker_email ?? '').split('@')[0],
           },
         }));
 

@@ -21,6 +21,7 @@ declare global {
       user?: {
         id: string;
         email: string;
+        display_name: string | null;
         scopes: string[];
       };
       jwt?: import('./lib/auth').SessionPayload;

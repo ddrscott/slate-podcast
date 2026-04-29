@@ -3,6 +3,7 @@ import Layout from '@/layouts/Layout.astro';
 import ScheduleSuggestionPanel from '@/components/ScheduleSuggestionPanel.astro';
 import { getDb } from '@/lib/db';
 import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+import { displayName } from '@/lib/people';
 
 export const prerender = false;
 
@@ -27,9 +28,12 @@ const isAdmin = isAppAdmin(user.scopes);
 
 const contribs = await db.prepare(
   `SELECT s.id, s.title, s.description, s.url, s.tags, s.status, s.upvote_count,
-          s.submitted_at, s.scheduled_slot_id, u.email AS author_email,
+          s.submitted_at, s.scheduled_slot_id,
+          u.email AS author_email, u.display_name AS author_display_name,
           sl.start_time AS scheduled_start, sl.duration_minutes AS scheduled_duration,
-          sl.speaker_id AS scheduled_speaker_id, spk.email AS scheduled_speaker_email
+          sl.speaker_id AS scheduled_speaker_id,
+          spk.email AS scheduled_speaker_email,
+          spk.display_name AS scheduled_speaker_display_name
    FROM suggestions s
    JOIN users u ON u.id = s.author_id
    LEFT JOIN slots sl ON sl.id = s.scheduled_slot_id
@@ -64,7 +68,7 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
                 <div class="flex items-center gap-2 text-xs">
                   <span class={`badge badge-xs ${c.status === 'open' ? 'badge-success' : c.status === 'scheduled' ? 'badge-primary' : 'badge-ghost'}`}>{c.status}</span>
                   <span class="opacity-60 font-mono">▲ {c.upvote_count}</span>
-                  <span class="opacity-50 font-mono">{c.author_email}</span>
+                  <span class="opacity-50 font-mono">{displayName({ display_name: c.author_display_name, email: c.author_email })}</span>
                 </div>
                 <h2 class="card-title text-base mt-1">
                   {c.url ? (
@@ -82,7 +86,7 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
                 {c.status === 'scheduled' && c.scheduled_start && (
                   <p class="text-xs mt-2 font-mono opacity-75">
                     📅 {fmtSched.format(new Date(c.scheduled_start * 1000))}
-                    {c.scheduled_speaker_email && <span class="opacity-60"> · {c.scheduled_speaker_email}</span>}
+                    {c.scheduled_speaker_email && <span class="opacity-60"> · {displayName({ display_name: c.scheduled_speaker_display_name, email: c.scheduled_speaker_email })}</span>}
                   </p>
                 )}
                 {c.status === 'open' && (

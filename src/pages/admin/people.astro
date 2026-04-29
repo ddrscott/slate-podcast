@@ -2,6 +2,7 @@
 import Layout from '@/layouts/Layout.astro';
 import { getDb } from '@/lib/db';
 import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+import { displayName } from '@/lib/people';
 
 export const prerender = false;
 
@@ -16,7 +17,7 @@ const slates = await db.prepare('SELECT id, slug, name FROM slates ORDER BY name
 const memberships = await db.prepare(
   `SELECT m.slate_id, m.role, m.joined_at, m.promoted_at,
           s.slug AS slate_slug, s.name AS slate_name,
-          u.id AS user_id, u.email
+          u.id AS user_id, u.email, u.display_name
    FROM slate_members m
    JOIN slates s ON s.id = m.slate_id
    JOIN users u ON u.id = m.user_id
@@ -73,7 +74,7 @@ for (const m of memberships.results) {
           {(bySlate.get(s.id) ?? []).map(m => (
             <li class="flex items-center gap-2 text-sm p-2 border border-base-300 rounded">
               <span class={`badge badge-xs ${m.role === 'speaker' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>
-              <span class="flex-1 font-mono">{m.email}</span>
+              <span class="flex-1 truncate"><span>{displayName(m)}</span> <span class="ml-2 text-xs opacity-50 font-mono">{m.email}</span></span>
               {m.role === 'speaker' && (
                 <button class="demote btn btn-xs btn-ghost text-error border border-base-300"
                         data-slate-id={m.slate_id} data-user-id={m.user_id}>demote</button>

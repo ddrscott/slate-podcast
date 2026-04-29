@@ -2,6 +2,7 @@
 import { signInUrl, isAppAdmin } from '@/lib/auth';
 import { getEnv } from '@/lib/db';
 import { analyticsHead } from '@/lib/analytics';
+import { displayName } from '@/lib/people';
 
 interface Props {
   title?: string;
@@ -93,8 +94,8 @@ const computedOgDescription = ogDescription ?? (slate
                   <li class="border-t border-base-300 mt-1 pt-1">
                     <form method="POST" action="/api/auth/sign-out" class="contents">
                       <button type="submit" class="block w-full text-left px-3 py-2 hover:bg-base-200 hover:text-signal transition-colors">
-                        <div>Sign out</div>
-                        <div class="font-mono text-xs opacity-60 mt-0.5 truncate">{user.email}</div>
+                        <div>Sign out <span class="opacity-60">{displayName(user)}</span></div>
+                        <div class="font-mono text-xs opacity-50 mt-0.5 truncate">{user.email}</div>
                       </button>
                     </form>
                   </li>

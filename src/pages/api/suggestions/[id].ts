@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getDb } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireMemberOnSlate } from '@/lib/access';
+import { displayName } from '@/lib/people';
 
 export const prerender = false;
 
@@ -19,10 +20,10 @@ export const GET: APIRoute = async (ctx) => {
       `SELECT s.id, s.slate_id, s.title, s.description, s.url, s.tags,
               s.status, s.upvote_count, s.submitted_at,
               s.scheduled_slot_id, s.scheduled_at, s.scheduled_by,
-              au.email AS author_email, au.id AS author_id,
+              au.email AS author_email, au.display_name AS author_display_name, au.id AS author_id,
               sl.id AS slot_id, sl.start_time AS slot_start, sl.duration_minutes AS slot_duration,
               sl.status AS slot_status,
-              spk.id AS speaker_id, spk.email AS speaker_email,
+              spk.id AS speaker_id, spk.email AS speaker_email, spk.display_name AS speaker_display_name,
               slate.slug AS slate_slug, slate.timezone AS slate_timezone, slate.is_public AS slate_is_public
        FROM suggestions s
        JOIN users au ON au.id = s.author_id
@@ -58,7 +59,11 @@ export const GET: APIRoute = async (ctx) => {
         upvote_count: row.upvote_count,
         submitted_at: row.submitted_at,
         has_voted,
-        author: { id: row.author_id, email: row.author_email },
+        author: {
+          id: row.author_id,
+          email: row.author_email,
+          name: displayName({ display_name: row.author_display_name, email: row.author_email }),
+        },
         scheduled: row.slot_id ? {
           slot_id: row.slot_id,
           start_time: row.slot_start,
@@ -66,6 +71,7 @@ export const GET: APIRoute = async (ctx) => {
           status: row.slot_status,
           speaker_id: row.speaker_id,
           speaker_email: row.speaker_email,
+          speaker_name: displayName({ display_name: row.speaker_display_name, email: row.speaker_email }),
         } : null,
       },
     });

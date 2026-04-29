@@ -2,6 +2,7 @@
 import Layout from '@/layouts/Layout.astro';
 import { getDb } from '@/lib/db';
 import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+import { displayName } from '@/lib/people';
 
 export const prerender = false;
 
@@ -26,7 +27,7 @@ if (!isAdmin && member?.role !== 'speaker') {
 
 const members = await db.prepare(
   `SELECT m.user_id, m.role, m.joined_at, m.promoted_at,
-          u.email
+          u.email, u.display_name
    FROM slate_members m JOIN users u ON u.id = m.user_id
    WHERE m.slate_id = ?
    ORDER BY (m.role = 'speaker') DESC, m.joined_at DESC`,
@@ -55,8 +56,9 @@ const members = await db.prepare(
         <div class="card border border-base-300 bg-base-100">
           <div class="card-body py-3 flex-row items-center gap-3">
             <div class="flex-1">
-              <div class="flex items-center gap-2">
-                <span class="font-semibold">{m.email}</span>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-semibold">{displayName(m)}</span>
+                <span class="text-xs opacity-50 font-mono">{m.email}</span>
                 <span class={`badge badge-xs ${m.role === 'speaker' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>
               </div>
             </div>

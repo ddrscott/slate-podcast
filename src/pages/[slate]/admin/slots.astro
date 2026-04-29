@@ -28,6 +28,7 @@ const rows = await db.prepare(
   `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status, sl.custom_title, sl.notes_internal, sl.rule_id,
           sl.speaker_id, sl.suggestion_id,
           spk.email AS speaker_email,
+          spk.display_name AS speaker_display_name,
           sug.title AS suggestion_title
    FROM slots sl
    LEFT JOIN users spk ON spk.id = sl.speaker_id

@@ -2,6 +2,7 @@
 import Layout from '@/layouts/Layout.astro';
 import { getDb } from '@/lib/db';
 import { signInUrlForCtx, isAppAdmin } from '@/lib/auth';
+import { displayName } from '@/lib/people';
 
 export const prerender = false;
 
@@ -29,8 +30,8 @@ const watermark = seen?.watermark_at ?? 0;
 
 const rows = await db.prepare(
   `SELECT a.id, a.kind, a.created_at, a.meta,
-          actor.email AS actor_email,
-          target.email AS target_email,
+          actor.email AS actor_email, actor.display_name AS actor_display_name,
+          target.email AS target_email, target.display_name AS target_display_name,
           a.suggestion_id, sug.title AS suggestion_title,
           a.slot_id, sl.start_time AS slot_start
    FROM activity a
@@ -116,7 +117,7 @@ const unreadCount = rows.results.filter((r: any) => r.created_at > watermark).le
                   r.kind === 'slot_unscheduled' ||
                   r.kind === 'notes_published') && (
                   <>
-                    <span class="font-mono opacity-80">{r.actor_email ?? 'someone'}</span>
+                    <span class="font-mono opacity-80">{r.actor_email ? displayName({ display_name: r.actor_display_name, email: r.actor_email }) : 'someone'}</span>
                     <span class="opacity-75"> {verb}</span>
                     {r.suggestion_title && (
                       <>
@@ -140,10 +141,10 @@ const unreadCount = rows.results.filter((r: any) => r.created_at > watermark).le
                 {/* speaker_promoted / speaker_demoted — target + actor */}
                 {(r.kind === 'speaker_promoted' || r.kind === 'speaker_demoted') && (
                   <>
-                    <span class="font-mono opacity-80">{r.target_email ?? '(removed)'}</span>
+                    <span class="font-mono opacity-80">{r.target_email ? displayName({ display_name: r.target_display_name, email: r.target_email }) : '(removed)'}</span>
                     <span class="opacity-75"> {verb}</span>
                     {' '}
-                    <span class="font-mono opacity-60">{r.actor_email ?? 'an admin'}</span>
+                    <span class="font-mono opacity-60">{r.actor_email ? displayName({ display_name: r.actor_display_name, email: r.actor_email }) : 'an admin'}</span>
                   </>
                 )}
 

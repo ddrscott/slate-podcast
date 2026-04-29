@@ -86,6 +86,7 @@ export const POST: APIRoute = async (ctx) => {
       duration_minutes: slot.duration_minutes,
       speaker_id: user.id,
       speaker_email: user.email,
+      speaker_display_name: user.display_name,
     });
   } catch (err) { return jsonError(err); }
 };

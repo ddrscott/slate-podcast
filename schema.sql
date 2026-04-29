@@ -6,10 +6,13 @@ PRAGMA foreign_keys = ON;
 -- ─── Identity ──────────────────────────────────────────────────────────────
 -- Delegated to auth.ljs.app. `id` is the userId issued by auth.ljs.app,
 -- stored as-is on first sign-in. `email` is cached for fast lookup.
+-- `display_name` is what we render wherever a person appears in the UI;
+-- when null, the helper falls back to the local part of `email`.
 -- `headshot_url` is the public URL of the user's uploaded profile image (R2).
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
+  display_name TEXT,
   headshot_url TEXT
 );
 

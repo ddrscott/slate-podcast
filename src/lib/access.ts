@@ -2,13 +2,15 @@ import type { APIContext } from 'astro';
 import { getDb } from './db';
 import { isAppAdmin } from './auth';
 
-export function requireUser(ctx: APIContext): { id: string; email: string; scopes: string[] } {
+type ResolvedUser = { id: string; email: string; display_name: string | null; scopes: string[] };
+
+export function requireUser(ctx: APIContext): ResolvedUser {
   const user = ctx.locals.user;
   if (!user) throw new HttpError(401, 'unauthorized');
   return user;
 }
 
-export function requireAppAdmin(ctx: APIContext): { id: string; email: string; scopes: string[] } {
+export function requireAppAdmin(ctx: APIContext): ResolvedUser {
   const user = requireUser(ctx);
   if (!isAppAdmin(user.scopes)) throw new HttpError(403, 'app_admin_required');
   return user;

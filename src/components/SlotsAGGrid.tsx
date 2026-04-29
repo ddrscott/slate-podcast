@@ -23,6 +23,7 @@ export interface SlotRow {
   rule_id: string | null;
   speaker_id: string | null;
   speaker_email: string | null;
+  speaker_display_name: string | null;
   suggestion_id: string | null;
   suggestion_title: string | null;
 }
@@ -63,7 +64,14 @@ export default function SlotsAGGrid({ slateId, timezone, rows: initialRows }: Pr
         'opacity-50 line-through': p => p.value === 'cancelled',
       },
     },
-    { headerName: 'Speaker', field: 'speaker_email', width: 200, editable: false,
+    { headerName: 'Speaker', width: 200, editable: false,
+      valueGetter: (p) => {
+        const r = p.data;
+        if (!r?.speaker_email) return '';
+        if (r.speaker_display_name?.trim()) return r.speaker_display_name.trim();
+        const at = r.speaker_email.indexOf('@');
+        return at > 0 ? r.speaker_email.slice(0, at) : r.speaker_email;
+      },
       cellStyle: { opacity: '0.85' } as Record<string, string> },
     { headerName: 'Topic', field: 'suggestion_title', flex: 1, editable: false,
       cellStyle: { fontStyle: 'italic', opacity: '0.85' } as Record<string, string> },

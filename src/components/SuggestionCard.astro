@@ -7,6 +7,8 @@
 //                 small unschedule control if the viewer owns the slot
 //   - archived  → dashed border, fully muted
 
+import { displayName } from '@/lib/people';
+
 export interface CardSuggestion {
   id: string;
   title: string;
@@ -19,7 +21,9 @@ export interface CardSuggestion {
   scheduled_start: number | null;
   scheduled_speaker_id: string | null;
   scheduled_speaker_email: string | null;
+  scheduled_speaker_display_name?: string | null;
   author_email?: string | null;
+  author_display_name?: string | null;
   tags?: string | null;
 }
 
@@ -58,6 +62,15 @@ const hasMeta = (showAuthor && s.author_email) ||
   (showTags && tagList.length > 0) ||
   (isScheduled && s.scheduled_start);
 const hasActions = (isSpeaker && isOpen) || canUnschedule;
+
+const speakerName = displayName({
+  display_name: s.scheduled_speaker_display_name ?? null,
+  email: s.scheduled_speaker_email,
+});
+const authorName = displayName({
+  display_name: s.author_display_name ?? null,
+  email: s.author_email,
+});
 ---
 
 <article
@@ -103,10 +116,10 @@ const hasActions = (isSpeaker && isOpen) || canUnschedule;
             <span>{fmtSched.format(new Date(s.scheduled_start * 1000))}</span>
           )}
           {isScheduled && s.scheduled_speaker_email && (
-            <span class="opacity-80">→ {s.scheduled_speaker_email}</span>
+            <span class="opacity-80">→ {speakerName}</span>
           )}
           {showAuthor && s.author_email && (
-            <span>{s.author_email}</span>
+            <span>{authorName}</span>
           )}
           {showTags && tagList.length > 0 && (
             <span class="opacity-80">{tagList.join(' · ')}</span>

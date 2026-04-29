@@ -205,7 +205,7 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
           <p class="font-mono text-xs text-signal">// scheduled for</p>
           <p class="font-semibold">${escapeHtml(fmtSched.format(new Date(s.scheduled.start_time * 1000)))}</p>
           <p class="text-xs opacity-70 font-mono">${escapeHtml(slateTz)} · ${s.scheduled.duration_minutes}min</p>
-          ${s.scheduled.speaker_email ? `<p class="text-sm">Speaker: <span class="font-mono opacity-80">${escapeHtml(s.scheduled.speaker_email)}</span></p>` : ''}
+          ${s.scheduled.speaker_name ? `<p class="text-sm">Speaker: <span class="opacity-80">${escapeHtml(s.scheduled.speaker_name)}</span></p>` : ''}
           <p class="pt-1">
             <a href="/${escapeHtml(slateSlug)}/slot/${escapeHtml(s.scheduled.slot_id)}" class="text-sm link">View slot details →</a>
           </p>
@@ -245,7 +245,7 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
         ${s.url ? `<p><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" class="link text-sm break-all">${escapeHtml(s.url)} ↗</a></p>` : ''}
         ${tagsBlock}
         <div class="flex items-center gap-3 text-xs opacity-70 font-mono">
-          <span>by ${escapeHtml(s.author.email)}</span>
+          <span>by ${escapeHtml(s.author.name)}</span>
           <span class="opacity-60">·</span>
           <span>${escapeHtml(relativeTime(s.submitted_at))}</span>
         </div>

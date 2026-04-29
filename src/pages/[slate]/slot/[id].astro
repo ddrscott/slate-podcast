@@ -4,6 +4,7 @@ import ShowNotesEditor from '@/components/ShowNotesEditor';
 import ShowNotesView from '@/components/ShowNotesView';
 import { getDb } from '@/lib/db';
 import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+import { displayName } from '@/lib/people';
 
 export const prerender = false;
 
@@ -22,7 +23,8 @@ const slot = await db.prepare(
           sl.speaker_id, sl.suggestion_id, sl.custom_title,
           sl.show_notes, sl.show_notes_published_at, sl.promo_image_url,
           sug.title AS suggestion_title, sug.description AS suggestion_description,
-          spk.email AS speaker_email, spk.headshot_url AS speaker_headshot_url
+          spk.email AS speaker_email, spk.display_name AS speaker_display_name,
+          spk.headshot_url AS speaker_headshot_url
    FROM slots sl
    LEFT JOIN suggestions sug ON sug.id = sl.suggestion_id
    LEFT JOIN users spk ON spk.id = sl.speaker_id
@@ -57,8 +59,11 @@ const displayTitle = slot.custom_title ?? slot.suggestion_title ?? null;
 // generated SVG card.
 const slotUrl = `${new URL(Astro.request.url).origin}/${slug}/slot/${slot.id}`;
 const ogTitle = displayTitle ? `${displayTitle} · ${slate.name}` : `${fmtDate.format(new Date(startMs))} · ${slate.name}`;
+const speakerName = slot.speaker_email
+  ? displayName({ display_name: slot.speaker_display_name, email: slot.speaker_email })
+  : null;
 const ogDesc = slot.suggestion_description
-  ?? `${fmtDate.format(new Date(startMs))} at ${fmtTime.format(new Date(startMs))} ${slate.timezone}${slot.speaker_email ? ` — with ${slot.speaker_email}` : ''}.`;
+  ?? `${fmtDate.format(new Date(startMs))} at ${fmtTime.format(new Date(startMs))} ${slate.timezone}${speakerName ? ` — with ${speakerName}` : ''}.`;
 const ogImg = slot.promo_image_url ?? undefined;
 
 // Available open suggestions (for the topic picker, when speaker)
@@ -87,8 +92,8 @@ const availableSuggestions = isSpeaker ? await db.prepare(
           <span class="flex items-center gap-1.5">
             {slot.speaker_headshot_url
               ? <img src={slot.speaker_headshot_url} alt="" class="w-5 h-5 rounded-full object-cover" />
-              : <span class="w-5 h-5 rounded-full bg-base-200 inline-flex items-center justify-center text-[10px] font-bold opacity-70">{slot.speaker_email.charAt(0).toUpperCase()}</span>}
-            <span class="opacity-70">{slot.speaker_email}</span>
+              : <span class="w-5 h-5 rounded-full bg-base-200 inline-flex items-center justify-center text-[10px] font-bold opacity-70">{(speakerName ?? '').charAt(0).toUpperCase()}</span>}
+            <span class="opacity-70">{speakerName}</span>
           </span>
         </>
       )}
@@ -154,7 +159,7 @@ const availableSuggestions = isSpeaker ? await db.prepare(
               <button id="claim-btn" class="btn btn-primary btn-sm">Claim this slot</button>
             )}
             {slot.speaker_id && !isSlotOwner && (
-              <button id="sub-in-btn" class="btn btn-ghost btn-sm border border-base-300">Sub in for {slot.speaker_email}</button>
+              <button id="sub-in-btn" class="btn btn-ghost btn-sm border border-base-300">Sub in for {speakerName}</button>
             )}
             {isSlotOwner && (
               <button id="release-btn" class="btn btn-ghost btn-sm border border-base-300">Release the slot</button>

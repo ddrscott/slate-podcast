@@ -4,6 +4,7 @@ import { getDb, getEnv } from './db';
 export interface AuthUser {
   id: string;        // auth.ljs.app userId (stored as-is)
   email: string;
+  display_name: string | null;
   scopes: string[];
 }
 
@@ -83,9 +84,14 @@ export async function getCurrentUser(
   const payload = await verifySessionToken(cookie.value, env.JWT_SECRET);
   if (!payload) return null;
 
-  await ensureUserRow(ctx as APIContext, payload.userId, payload.email);
+  const row = await ensureUserRow(ctx as APIContext, payload.userId, payload.email);
   return {
-    user: { id: payload.userId, email: payload.email, scopes: payload.scopes ?? [] },
+    user: {
+      id: payload.userId,
+      email: payload.email,
+      display_name: row.display_name,
+      scopes: payload.scopes ?? [],
+    },
     jwt: payload,
   };
 }
@@ -98,18 +104,22 @@ export function isAppAdmin(scopes: string[] | undefined): boolean {
 }
 
 // Find-or-create our local user row keyed by the auth.ljs.app userId.
-// Email may change upstream — keep ours in sync.
+// Email may change upstream — keep ours in sync. Returns the resulting
+// row's display_name (NULL until the user sets it via Edit Profile) so
+// callers don't need a second query.
 export async function ensureUserRow(
   ctx: APIContext,
   userId: string,
   email: string,
-): Promise<void> {
+): Promise<{ display_name: string | null }> {
   const db = getDb(ctx);
   const normalized = email.toLowerCase().trim();
-  await db.prepare(
+  const row = await db.prepare(
     `INSERT INTO users (id, email) VALUES (?, ?)
-     ON CONFLICT(id) DO UPDATE SET email = excluded.email`,
-  ).bind(userId, normalized).run();
+     ON CONFLICT(id) DO UPDATE SET email = excluded.email
+     RETURNING display_name`,
+  ).bind(userId, normalized).first<{ display_name: string | null }>();
+  return row ?? { display_name: null };
 }
 
 // ── Cookie helpers used by /api/auth/callback and /sign-out ───────────────

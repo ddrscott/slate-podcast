@@ -2,6 +2,7 @@
 import Layout from '@/layouts/Layout.astro';
 import { getDb } from '@/lib/db';
 import { signInUrlForCtx } from '@/lib/auth';
+import { displayName, emailLocal } from '@/lib/people';
 
 export const prerender = false;
 
@@ -10,8 +11,10 @@ if (!user) return Astro.redirect(signInUrlForCtx(Astro, '/me'));
 
 const db = getDb(Astro);
 
-const me = await db.prepare('SELECT headshot_url FROM users WHERE id = ?')
-  .bind(user.id).first<{ headshot_url: string | null }>();
+const me = await db.prepare('SELECT headshot_url, display_name FROM users WHERE id = ?')
+  .bind(user.id).first<{ headshot_url: string | null; display_name: string | null }>();
+const myName = displayName({ display_name: me?.display_name ?? null, email: user.email });
+const gravatarHash = Astro.locals.jwt?.gravatarHash ?? '';
 
 // Slates the user is a member of
 const memberships = await db.prepare(
@@ -45,25 +48,50 @@ const mySuggestions = await db.prepare(
 <Layout title="Slate · my dashboard">
   <section class="py-8">
     <p class="font-mono text-sm text-signal mb-2">// signed in</p>
-    <div id="profile" class="flex items-center gap-4 scroll-mt-20">
-      <div id="headshot-preview" class="w-20 h-20 rounded-full border border-base-300 bg-base-200 overflow-hidden flex items-center justify-center text-2xl opacity-60">
-        {me?.headshot_url
-          ? <img src={me.headshot_url} alt="" class="w-full h-full object-cover" />
-          : <span class="font-mono">{user.email.charAt(0).toUpperCase()}</span>}
-      </div>
-      <div>
-        <h1 class="text-2xl md:text-3xl font-bold">{user.email}</h1>
-        <div class="flex flex-wrap gap-2 mt-2 text-sm">
-          <label class="btn btn-xs btn-ghost border border-base-300 cursor-pointer">
-            <input id="headshot-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
-            {me?.headshot_url ? 'Replace headshot' : 'Upload headshot'}
-          </label>
-          {me?.headshot_url && (
-            <button id="headshot-remove" class="btn btn-xs btn-ghost border border-base-300 text-error">Remove</button>
-          )}
-          <span id="headshot-status" class="text-xs opacity-70 self-center"></span>
+    <div id="profile" class="scroll-mt-20">
+      <div class="flex items-center gap-4">
+        <div id="headshot-preview" class="w-20 h-20 rounded-full border border-base-300 bg-base-200 overflow-hidden flex items-center justify-center text-2xl opacity-60">
+          {me?.headshot_url
+            ? <img src={me.headshot_url} alt="" class="w-full h-full object-cover" />
+            : <span class="font-mono">{myName.charAt(0).toUpperCase()}</span>}
+        </div>
+        <div class="min-w-0">
+          <h1 class="text-2xl md:text-3xl font-bold truncate">{myName}</h1>
+          <p class="text-xs opacity-60 font-mono mt-1 truncate">{user.email}</p>
+          <div class="flex flex-wrap gap-2 mt-2 text-sm">
+            <label class="btn btn-xs btn-ghost border border-base-300 cursor-pointer">
+              <input id="headshot-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
+              {me?.headshot_url ? 'Replace headshot' : 'Upload headshot'}
+            </label>
+            {me?.headshot_url && (
+              <button id="headshot-remove" class="btn btn-xs btn-ghost border border-base-300 text-error">Remove</button>
+            )}
+            <span id="headshot-status" class="text-xs opacity-70 self-center"></span>
+          </div>
         </div>
       </div>
+
+      <form id="profile-form" class="mt-6 max-w-md space-y-2">
+        <label class="form-control">
+          <span class="label-text text-sm">Display name</span>
+          <input id="display-name-input" name="display_name" type="text" maxlength="80"
+                 placeholder={emailLocal(user.email)}
+                 value={me?.display_name ?? ''}
+                 class="input input-bordered" />
+          <span class="text-xs opacity-60 mt-1">
+            Shown wherever you appear in the app. Leave blank to use <code class="font-mono">{emailLocal(user.email)}</code>.
+          </span>
+        </label>
+        <div class="flex flex-wrap gap-2 items-center">
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+          {gravatarHash && (
+            <button id="gravatar-fetch-btn" type="button" class="btn btn-ghost btn-sm border border-base-300">
+              Use my Gravatar name
+            </button>
+          )}
+          <span id="profile-status" class="text-xs opacity-70 self-center"></span>
+        </div>
+      </form>
     </div>
 
     <div class="mt-8 grid md:grid-cols-2 gap-6">
@@ -179,6 +207,65 @@ const mySuggestions = await db.prepare(
         const res = await fetch('/api/me/headshot', { method: 'DELETE' });
         if (res.ok) location.reload();
         else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
+      });
+    })();
+  </script>
+
+  <script is:inline define:vars={{ gravatarHash }}>
+    (() => {
+      const form = document.getElementById('profile-form');
+      const nameInput = document.getElementById('display-name-input');
+      const status = document.getElementById('profile-status');
+      const gravBtn = document.getElementById('gravatar-fetch-btn');
+      if (!form || !nameInput) return;
+
+      function setStatus(msg, kind) {
+        status.classList.remove('text-error', 'text-success');
+        if (kind) status.classList.add(`text-${kind}`);
+        status.textContent = msg ?? '';
+      }
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        setStatus('Saving…');
+        const value = nameInput.value.trim();
+        const res = await fetch('/api/me/profile', {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ display_name: value === '' ? null : value }),
+        });
+        if (res.ok) {
+          setStatus('Saved.', 'success');
+          setTimeout(() => location.reload(), 500);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          setStatus(`Failed: ${err.error ?? res.status}`, 'error');
+        }
+      });
+
+      // Gravatar profile lookup from the browser. Avoids a worker-side
+      // dependency on a third-party service for the most-common path
+      // (the user is on /me anyway, so a direct fetch works fine).
+      gravBtn?.addEventListener('click', async () => {
+        if (!gravatarHash) { setStatus('No Gravatar hash on this account.', 'error'); return; }
+        setStatus('Looking up…');
+        try {
+          const res = await fetch(`https://www.gravatar.com/${gravatarHash}.json`, {
+            headers: { 'accept': 'application/json' },
+          });
+          if (!res.ok) {
+            setStatus(res.status === 404 ? 'No Gravatar profile found.' : `Lookup failed: ${res.status}`, 'error');
+            return;
+          }
+          const data = await res.json();
+          const entry = data?.entry?.[0];
+          const name = entry?.displayName ?? entry?.name?.formatted ?? null;
+          if (!name) { setStatus("Gravatar profile has no name.", 'error'); return; }
+          nameInput.value = name;
+          setStatus('Pulled from Gravatar — review and click Save.', 'success');
+        } catch {
+          setStatus("Couldn't reach Gravatar.", 'error');
+        }
       });
     })();
   </script>

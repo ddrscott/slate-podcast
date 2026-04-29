@@ -36,9 +36,12 @@ const params: unknown[] = status === 'all' ? [slate.id] : [slate.id, status];
 // Within each status group, sort by upvote count then recency.
 const suggestions = await db.prepare(
   `SELECT s.id, s.title, s.description, s.url, s.tags, s.status, s.upvote_count,
-          s.submitted_at, s.scheduled_slot_id, u.email AS author_email,
+          s.submitted_at, s.scheduled_slot_id,
+          u.email AS author_email, u.display_name AS author_display_name,
           sl.start_time AS scheduled_start, sl.duration_minutes AS scheduled_duration,
-          sl.speaker_id AS scheduled_speaker_id, spk.email AS scheduled_speaker_email,
+          sl.speaker_id AS scheduled_speaker_id,
+          spk.email AS scheduled_speaker_email,
+          spk.display_name AS scheduled_speaker_display_name,
           (SELECT 1 FROM suggestion_votes v WHERE v.suggestion_id = s.id AND v.user_id = ?) AS has_voted
    FROM suggestions s
    JOIN users u ON u.id = s.author_id
