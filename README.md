@@ -39,3 +39,7 @@ All developer and user docs live in [`docs/`](docs/), organized using the [Diata
 ## Status
 
 Beta. Free during beta.
+
+## License
+
+[MIT](LICENSE)

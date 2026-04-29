@@ -3,7 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Slate — multi-tenant podcast slot manager with Coordinator/Creator/Contributor roles",
+  "description": "Slate — multi-tenant podcast slot manager with Member/Speaker/App-Admin roles",
+  "license": "MIT",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build && echo '_worker.js' > dist/.assetsignore && echo '_routes.json' >> dist/.assetsignore",
