@@ -30,7 +30,7 @@ const { slate } = Astro.props;
   <aside
     id="schedule-panel-pane"
     class="absolute bg-base-100 shadow-2xl flex flex-col
-           bottom-0 inset-x-0 max-h-[85vh] rounded-t-xl translate-y-full
+           bottom-0 inset-x-0 max-h-[90vh] rounded-t-xl translate-y-full
            md:bottom-auto md:inset-x-auto md:top-0 md:right-0 md:h-full md:max-h-none md:w-[480px] md:rounded-none md:translate-x-full md:translate-y-0
            transition-transform duration-200"
   >
@@ -49,21 +49,54 @@ const { slate } = Astro.props;
       </button>
     </header>
 
-    <div class="flex-1 overflow-y-auto p-4">
-      <p class="text-xs opacity-60 mb-3">
-        Pick an upcoming slot. Selecting one claims it for you AND attaches this topic in a single step.
-      </p>
-
-      <div id="schedule-panel-loading" class="text-sm opacity-60 hidden">Loading slots…</div>
-      <div id="schedule-panel-empty" class="text-sm opacity-60 hidden">
-        No open slots in the upcoming window. Generate more from
-        <a href={`/${slate.slug}/admin/rules`} class="link">Scheduling rules</a>.
+    <div class="flex-1 overflow-y-auto">
+      <div class="px-4 pt-3 pb-2 text-xs opacity-60">
+        Tap a highlighted day to pick a time. Selecting commits the claim and topic in one step.
       </div>
-      <ul id="schedule-panel-slots" class="space-y-2"></ul>
-      <p id="schedule-panel-status" class="text-sm mt-3 hidden"></p>
+
+      {/* Calendar header */}
+      <div class="flex items-center justify-between px-4 py-2">
+        <button id="cal-prev" type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Previous month">‹</button>
+        <div id="cal-month-label" class="font-semibold text-sm"></div>
+        <button id="cal-next" type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Next month">›</button>
+      </div>
+
+      {/* Day-of-week labels (mirrors ScheduleGrid) */}
+      <div class="grid grid-cols-7 gap-1 text-[10px] font-mono opacity-50 px-4 mb-1">
+        <div class="text-center">S</div>
+        <div class="text-center">M</div>
+        <div class="text-center">T</div>
+        <div class="text-center">W</div>
+        <div class="text-center">T</div>
+        <div class="text-center">F</div>
+        <div class="text-center">S</div>
+      </div>
+
+      {/* Day cells (rendered by JS) */}
+      <div id="cal-grid" class="grid grid-cols-7 gap-1 px-4"></div>
+
+      {/* Loading / empty states */}
+      <div id="schedule-panel-loading" class="px-4 py-3 text-sm opacity-60 hidden">Loading slots…</div>
+      <div id="schedule-panel-empty" class="px-4 py-3 text-sm opacity-60 hidden">
+        No claim-able slots in the upcoming window.
+      </div>
+
+      {/* Day detail (shown when a day with multiple slots is tapped) */}
+      <div id="cal-day-detail" class="border-t border-base-300 mt-3 hidden">
+        <div class="px-4 py-3">
+          <div class="text-xs uppercase tracking-wide opacity-60 mb-2" id="cal-day-label"></div>
+          <ul id="cal-day-times" class="space-y-2"></ul>
+        </div>
+      </div>
+
+      <p id="schedule-panel-status" class="text-sm px-4 pb-4 hidden"></p>
     </div>
   </aside>
 </div>
+
+{/* Tailwind safelist — these literals are referenced from the inline script's
+    string templates below. Listing them here keeps the JIT happy. */}
+<div class="hidden bg-signal-100 text-signal-700 border-signal-200 bg-amber-100 text-amber-800 border-amber-200 ring-2 ring-signal ring-offset-1 ring-offset-base-100"></div>
 
 <script is:inline>
   (() => {
@@ -74,14 +107,24 @@ const { slate } = Astro.props;
     const pane = document.getElementById('schedule-panel-pane');
     const backdrop = document.getElementById('schedule-panel-backdrop');
     const titleEl = root.querySelector('[data-suggestion-title]');
-    const list = document.getElementById('schedule-panel-slots');
+    const grid = document.getElementById('cal-grid');
+    const monthLabel = document.getElementById('cal-month-label');
+    const prevBtn = document.getElementById('cal-prev');
+    const nextBtn = document.getElementById('cal-next');
+    const dayDetail = document.getElementById('cal-day-detail');
+    const dayDetailLabel = document.getElementById('cal-day-label');
+    const dayDetailList = document.getElementById('cal-day-times');
     const loading = document.getElementById('schedule-panel-loading');
     const empty = document.getElementById('schedule-panel-empty');
     const status = document.getElementById('schedule-panel-status');
     const closeBtn = document.getElementById('schedule-panel-close');
 
     let activeSuggestionId = null;
-    let cachedSlots = null;
+    let cachedPayload = null; // { timezone, slots: [...] }
+    let slotsByDay = new Map(); // ISO 'YYYY-MM-DD' (slate tz) → slot[]
+    let monthRange = []; // [{y, m}] available months
+    let viewIndex = 0;   // index into monthRange
+
     const isDesktop = () => matchMedia('(min-width: 768px)').matches;
 
     function setStatus(msg, kind) {
@@ -91,61 +134,171 @@ const { slate } = Astro.props;
       status.textContent = msg;
     }
 
-    function fmtSlot(slot, tz) {
-      const fmt = new Intl.DateTimeFormat('en-US', {
-        timeZone: tz, weekday: 'short', month: 'short', day: 'numeric',
-        hour: 'numeric', minute: '2-digit',
-      });
-      return `${fmt.format(new Date(slot.start_time * 1000))} ${tz}`;
+    function fmtTime(secs, tz) {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, hour: 'numeric', minute: '2-digit',
+      }).format(new Date(secs * 1000));
+    }
+    function fmtIso(secs, tz) {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(new Date(secs * 1000));
+    }
+    function fmtDayLabel(iso, tz) {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, weekday: 'long', month: 'short', day: 'numeric',
+      }).format(new Date(`${iso}T12:00:00Z`));
     }
 
-    function renderSlots(payload) {
-      list.innerHTML = '';
-      empty.classList.toggle('hidden', payload.slots.length > 0);
+    function buildIndex(payload) {
+      slotsByDay = new Map();
       for (const s of payload.slots) {
-        const li = document.createElement('li');
-        const ownPill = s.mine
-          ? '<span class="badge badge-xs badge-primary ml-2">your slot · pick a topic</span>'
-          : `<span class="badge badge-xs badge-ghost ml-2">${s.status}</span>`;
-        li.innerHTML = `
-          <button data-slot-id="${s.id}" type="button"
-                  class="schedule-pick w-full text-left p-3 border border-base-300 rounded hover:border-signal transition-colors">
-            <div class="font-mono text-sm">${fmtSlot(s, payload.timezone)}</div>
-            <div class="text-xs opacity-70 mt-1">${ownPill} · ${s.duration_minutes}m</div>
-          </button>`;
-        list.appendChild(li);
+        const iso = fmtIso(s.start_time, payload.timezone);
+        const arr = slotsByDay.get(iso) ?? [];
+        arr.push(s);
+        slotsByDay.set(iso, arr);
       }
-      list.querySelectorAll('.schedule-pick').forEach(btn => {
-        btn.addEventListener('click', () => pickSlot(btn.dataset.slotId, btn));
+      for (const arr of slotsByDay.values()) arr.sort((a, b) => a.start_time - b.start_time);
+
+      // Determine which months to show: today's month plus any later months
+      // that have at least one claim-able slot.
+      const todayIso = fmtIso(Math.floor(Date.now() / 1000), payload.timezone);
+      const [ty, tm] = todayIso.split('-').map(Number);
+      const monthSet = new Map();
+      monthSet.set(`${ty}-${tm}`, { y: ty, m: tm });
+      for (const iso of slotsByDay.keys()) {
+        const [y, m] = iso.split('-').map(Number);
+        const key = `${y}-${m}`;
+        if (!monthSet.has(key)) monthSet.set(key, { y, m });
+      }
+      monthRange = [...monthSet.values()].sort((a, b) => a.y - b.y || a.m - b.m);
+      viewIndex = 0;
+    }
+
+    function classesForCell(slots, isToday) {
+      // Mirror ScheduleGrid's status palette. "mine" pulls amber, otherwise open is signal.
+      const todayRing = isToday ? 'ring-2 ring-signal ring-offset-1 ring-offset-base-100' : '';
+      if (!slots || slots.length === 0) {
+        const base = 'aspect-square text-[11px] flex items-start justify-end p-1 font-mono rounded';
+        return isToday
+          ? `${base} bg-signal-100 text-signal-700 ${todayRing}`
+          : `${base} opacity-30`;
+      }
+      const dominant = slots.some(s => s.mine) ? 'amber' : 'signal';
+      const palette = dominant === 'amber'
+        ? 'bg-amber-100 text-amber-800 border-amber-200'
+        : 'bg-signal-100 text-signal-700 border-signal-200';
+      return `aspect-square text-[11px] flex flex-col items-stretch p-1 border rounded font-mono ${palette} hover:ring-2 hover:ring-signal transition-all cursor-pointer ${todayRing}`;
+    }
+
+    function renderMonth() {
+      grid.innerHTML = '';
+      dayDetail.classList.add('hidden');
+      if (monthRange.length === 0) return;
+
+      const { y, m } = monthRange[viewIndex];
+      monthLabel.textContent = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
+        .format(new Date(Date.UTC(y, m - 1, 1)));
+
+      prevBtn.disabled = viewIndex <= 0;
+      nextBtn.disabled = viewIndex >= monthRange.length - 1;
+      prevBtn.classList.toggle('opacity-30', prevBtn.disabled);
+      nextBtn.classList.toggle('opacity-30', nextBtn.disabled);
+
+      const firstWd = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const todayIso = fmtIso(Math.floor(Date.now() / 1000), cachedPayload.timezone);
+
+      for (let i = 0; i < firstWd; i++) {
+        const filler = document.createElement('div');
+        grid.appendChild(filler);
+      }
+      for (let d = 1; d <= lastDay; d++) {
+        const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const slots = slotsByDay.get(iso);
+        const isToday = iso === todayIso;
+        const cls = classesForCell(slots, isToday);
+
+        if (slots && slots.length > 0) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = cls;
+          btn.title = slots.length === 1
+            ? `${fmtTime(slots[0].start_time, cachedPayload.timezone)} · ${slots[0].mine ? 'your slot' : slots[0].status}`
+            : `${slots.length} times`;
+          btn.dataset.iso = iso;
+          btn.innerHTML = `
+            <div class="${isToday ? 'text-right font-bold' : 'text-right opacity-70'}">${d}</div>
+            ${slots.length > 1 ? `<div class="mt-auto text-[9px]">×${slots.length}</div>` : ''}`;
+          btn.addEventListener('click', () => handleDayPick(iso, slots));
+          grid.appendChild(btn);
+        } else {
+          const cell = document.createElement('div');
+          cell.className = cls;
+          cell.innerHTML = `<span class="${isToday ? 'text-signal font-bold' : ''}">${d}</span>`;
+          grid.appendChild(cell);
+        }
+      }
+    }
+
+    function handleDayPick(iso, slots) {
+      if (slots.length === 1) {
+        scheduleSlot(slots[0].id);
+        return;
+      }
+      // Multi-slot day: show a list below
+      dayDetailLabel.textContent = fmtDayLabel(iso, cachedPayload.timezone);
+      dayDetailList.innerHTML = '';
+      for (const s of slots) {
+        const li = document.createElement('li');
+        const tag = s.mine
+          ? '<span class="badge badge-xs badge-warning">your slot · pick a topic</span>'
+          : `<span class="badge badge-xs badge-ghost">${s.status}</span>`;
+        li.innerHTML = `
+          <button type="button" data-slot-id="${s.id}"
+                  class="time-pick w-full text-left p-3 border border-base-300 rounded hover:border-signal transition-colors flex items-center justify-between">
+            <span class="font-mono">${fmtTime(s.start_time, cachedPayload.timezone)}</span>
+            ${tag}
+          </button>`;
+        dayDetailList.appendChild(li);
+      }
+      dayDetailList.querySelectorAll('.time-pick').forEach(b => {
+        b.addEventListener('click', () => scheduleSlot(b.dataset.slotId, b));
       });
+      dayDetail.classList.remove('hidden');
+      // Scroll the detail into view on mobile so the user sees it
+      if (!isDesktop()) dayDetail.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     async function open(suggestionId, suggestionTitle) {
       activeSuggestionId = suggestionId;
       titleEl.textContent = suggestionTitle ?? 'Schedule…';
       setStatus('');
+      dayDetail.classList.add('hidden');
+      grid.innerHTML = '';
       root.classList.remove('hidden');
-      // Force reflow so the next class change animates
       void pane.offsetWidth;
       pane.classList.remove('translate-y-full', 'md:translate-x-full');
       backdrop.classList.remove('opacity-0');
       root.dataset.state = 'open';
       document.body.style.overflow = 'hidden';
 
-      if (!cachedSlots) {
+      if (!cachedPayload) {
         loading.classList.remove('hidden');
         try {
           const res = await fetch(`/api/slates/${slateId}/open-slots`);
           if (!res.ok) throw new Error(`status ${res.status}`);
-          cachedSlots = await res.json();
+          cachedPayload = await res.json();
         } catch (err) {
-          setStatus('Couldn’t load slots. Refresh and try again.', 'error');
+          setStatus("Couldn't load slots. Refresh and try again.", 'error');
           loading.classList.add('hidden');
           return;
         }
         loading.classList.add('hidden');
+        buildIndex(cachedPayload);
       }
-      renderSlots(cachedSlots);
+      empty.classList.toggle('hidden', cachedPayload.slots.length > 0);
+      renderMonth();
     }
 
     function close() {
@@ -158,8 +311,8 @@ const { slate } = Astro.props;
       }, 200);
     }
 
-    async function pickSlot(slotId, btn) {
-      btn.disabled = true;
+    async function scheduleSlot(slotId, btn) {
+      if (btn) btn.disabled = true;
       setStatus('Scheduling…');
       const res = await fetch(`/api/slots/${slotId}/claim-and-schedule`, {
         method: 'POST',
@@ -167,23 +320,23 @@ const { slate } = Astro.props;
         body: JSON.stringify({ suggestion_id: activeSuggestionId }),
       });
       if (res.ok) {
-        // Plausible event so we can see how often this gets used
         if (window.plausible) window.plausible('Schedule Suggestion', { props: { slate: slateSlug } });
         setStatus('Scheduled. Reloading…', 'success');
         setTimeout(() => location.reload(), 600);
       } else {
-        btn.disabled = false;
+        if (btn) btn.disabled = false;
         const e = await res.json().catch(() => ({}));
         setStatus(`Failed: ${e.error ?? res.status}`, 'error');
       }
     }
 
-    // Open on custom event from any suggestion card on the page
+    prevBtn.addEventListener('click', () => { if (viewIndex > 0) { viewIndex--; renderMonth(); } });
+    nextBtn.addEventListener('click', () => { if (viewIndex < monthRange.length - 1) { viewIndex++; renderMonth(); } });
+
     window.addEventListener('schedule-suggestion', (e) => {
       const detail = e.detail ?? {};
       open(detail.suggestionId, detail.suggestionTitle);
     });
-
     closeBtn.addEventListener('click', close);
     backdrop.addEventListener('click', close);
     document.addEventListener('keydown', (e) => {
