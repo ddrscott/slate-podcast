@@ -51,10 +51,11 @@ const member = user ? await db.prepare(
 const isMember = !!member;
 const isSpeaker = member?.role === 'speaker' || isAppAdmin(user?.scopes);
 
-// Top suggestions to feature on this page (open + scheduled, sorted by votes).
-// Joins to the scheduled slot + speaker so we can render "scheduled for X with Y"
-// and the unschedule control directly on the card.
-const topSuggestions = await db.prepare(
+// Full pool of open + scheduled suggestions for the topics pane. Open first
+// so a speaker scanning for things to claim sees actionable rows above the
+// already-taken ones; within each status, by upvote count then recency.
+// Archived suggestions are accessible via the /suggestions archive view.
+const suggestions = await db.prepare(
   `SELECT s.id, s.title, s.description, s.url, s.upvote_count, s.status,
           s.scheduled_slot_id,
           sl.start_time AS scheduled_start, sl.duration_minutes AS scheduled_duration,
@@ -64,7 +65,7 @@ const topSuggestions = await db.prepare(
    LEFT JOIN slots sl ON sl.id = s.scheduled_slot_id
    LEFT JOIN users spk ON spk.id = sl.speaker_id
    WHERE s.slate_id = ? AND s.status IN ('open','scheduled')
-   ORDER BY s.upvote_count DESC, s.submitted_at DESC LIMIT 6`,
+   ORDER BY (s.status = 'open') DESC, s.upvote_count DESC, s.submitted_at DESC`,
 ).bind(user?.id ?? '', slate.id).all<{
   id: string; title: string; description: string | null; url: string | null;
   upvote_count: number; status: string; has_voted: number | null;
@@ -72,6 +73,10 @@ const topSuggestions = await db.prepare(
   scheduled_start: number | null; scheduled_duration: number | null;
   scheduled_speaker_id: string | null; scheduled_speaker_email: string | null;
 }>();
+
+const openCount = suggestions.results.filter(s => s.status === 'open').length;
+const scheduledCount = suggestions.results.filter(s => s.status === 'scheduled').length;
+const totalCount = suggestions.results.length;
 
 const fmtSched = new Intl.DateTimeFormat('en-US', {
   timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
@@ -112,7 +117,6 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
       {isMember && (
         <>
           <a href={`/${slate.slug}/suggest`} class="btn btn-primary btn-sm">+ Suggest a topic</a>
-          <a href={`/${slate.slug}/suggestions`} class="btn btn-ghost btn-sm border border-base-300">All suggestions →</a>
           <a href={`/${slate.slug}/activity`} class="btn btn-ghost btn-sm border border-base-300 relative">
             Activity
             {unreadActivity > 0 && (
@@ -127,60 +131,162 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
     </div>
   </section>
 
-  <section class="py-4">
-    <div class="flex items-baseline justify-between mb-3">
-      <h2 class="text-xl font-bold">Upcoming</h2>
-      <span class="text-xs opacity-60 font-mono">current + next month</span>
+  {/* Mobile-only tab bar — sticky to viewport top so the user can switch
+      between Topics and Schedule without scrolling back up. */}
+  <div class="lg:hidden sticky top-0 z-20 bg-base-100/95 backdrop-blur border-b border-base-300 -mx-4 mb-4">
+    <div class="flex">
+      <button data-tab="topics" type="button" class="tab-btn flex-1 py-3 text-sm font-semibold border-b-2 border-signal text-signal">
+        Topics <span class="opacity-60 font-normal">({totalCount})</span>
+      </button>
+      <button data-tab="schedule" type="button" class="tab-btn flex-1 py-3 text-sm font-semibold border-b-2 border-transparent opacity-60">
+        Schedule
+      </button>
     </div>
-    <ScheduleGrid
-      client:load
-      slots={slotsForGrid}
-      timezone={slate.timezone}
-      slateSlug={slate.slug}
-      view="window"
-    />
-  </section>
+  </div>
 
-  <section class="py-8">
-    <div class="flex items-baseline justify-between mb-3">
-      <h2 class="text-xl font-bold">Top topic suggestions</h2>
-      {isMember && (
-        <a href={`/${slate.slug}/suggestions`} class="link text-sm opacity-75">view all →</a>
-      )}
-    </div>
+  {/* Two-pane container: side-by-side on lg, tab-toggled on smaller screens. */}
+  <div data-active-tab="topics" class="lg:grid lg:grid-cols-2 lg:gap-8 lg:items-start">
+    {/* TOPICS pane */}
+    <section data-panel="topics" aria-label="Topic suggestions">
+      <header class="hidden lg:flex items-baseline justify-between mb-3">
+        <h2 class="text-lg font-semibold">Topics <span class="text-sm opacity-50 font-normal ml-1">{totalCount}</span></h2>
+      </header>
 
-    {topSuggestions.results.length === 0 ? (
-      <div class="card bg-base-200 border border-base-300">
-        <div class="card-body">
+      {totalCount === 0 ? (
+        <div class="rounded border border-base-300 bg-base-200/40 p-6 text-center">
           <p class="text-sm opacity-70">
-            No suggestions yet.
+            No topics yet.
             {isMember
-              ? <> <a href={`/${slate.slug}/suggest`} class="link">Be the first to suggest a topic →</a></>
+              ? <> <a href={`/${slate.slug}/suggest`} class="link">Be the first →</a></>
               : !user
                 ? <> <a href={signInHref} class="link">Sign in</a> to add the first one.</>
                 : <> <a href={`/${slate.slug}/join`} class="link">Join as a Member</a> to add the first one.</>}
           </p>
         </div>
-      </div>
-    ) : (
-      <div class="grid md:grid-cols-2 gap-3">
-        {topSuggestions.results.map(s => (
-          <SuggestionCard
-            s={s}
-            isMember={isMember}
-            isSpeaker={isSpeaker}
-            currentUserId={user?.id}
-            isAdmin={isAppAdmin(user?.scopes)}
-            fmtSched={fmtSched}
-          />
-        ))}
-      </div>
-    )}
-  </section>
+      ) : (
+        <>
+          <div class="flex flex-wrap items-center gap-2 mb-3">
+            <div class="flex gap-1 text-xs">
+              <button data-filter="open" class="filter-chip btn btn-xs btn-primary">Open <span class="opacity-80 ml-1">{openCount}</span></button>
+              <button data-filter="scheduled" class="filter-chip btn btn-xs btn-ghost border border-base-300">Scheduled <span class="opacity-60 ml-1">{scheduledCount}</span></button>
+              <button data-filter="all" class="filter-chip btn btn-xs btn-ghost border border-base-300">All <span class="opacity-60 ml-1">{totalCount}</span></button>
+            </div>
+            <input id="topic-search" type="search" placeholder="Search…"
+                   class="input input-bordered input-sm flex-1 min-w-0" />
+          </div>
+
+          <div id="topics-list" class="space-y-2">
+            {suggestions.results.map(s => (
+              <SuggestionCard
+                s={s}
+                isMember={isMember}
+                isSpeaker={isSpeaker}
+                currentUserId={user?.id}
+                isAdmin={isAppAdmin(user?.scopes)}
+                fmtSched={fmtSched}
+              />
+            ))}
+          </div>
+
+          <p id="topics-empty" class="hidden mt-6 text-center text-sm opacity-60">
+            Nothing matches.
+          </p>
+
+          <p class="mt-6 text-xs opacity-60">
+            <a href={`/${slate.slug}/suggestions?status=archived`} class="hover:opacity-100">View archived &amp; details →</a>
+          </p>
+        </>
+      )}
+    </section>
+
+    {/* SCHEDULE pane — sticky on desktop so it stays in view while the
+        topics list scrolls. */}
+    <section data-panel="schedule" aria-label="Schedule" class="lg:sticky lg:top-4 lg:self-start mt-4 lg:mt-0">
+      <header class="hidden lg:flex items-baseline justify-between mb-3">
+        <h2 class="text-lg font-semibold">Schedule</h2>
+        <span class="text-xs opacity-60 font-mono">{slate.timezone}</span>
+      </header>
+
+      <ScheduleGrid
+        client:load
+        slots={slotsForGrid}
+        timezone={slate.timezone}
+        slateSlug={slate.slug}
+        view="window"
+      />
+    </section>
+  </div>
 
   {isSpeaker && <ScheduleSuggestionPanel slate={{ id: slate.id, slug: slate.slug, name: slate.name }} />}
 
+  <style is:inline>
+    /* Mobile-only: hide the inactive panel based on the container's
+       data-active-tab attribute. On lg+ the grid layout puts both side
+       by side and these rules don't apply. */
+    @media (max-width: 1023px) {
+      [data-active-tab="topics"] [data-panel="schedule"] { display: none; }
+      [data-active-tab="schedule"] [data-panel="topics"] { display: none; }
+    }
+  </style>
+
   <script is:inline define:vars={{ slateId: slate.id }}>
+    // ─── Tab switching (mobile only) ─────────────────────────────────────
+    const paneContainer = document.querySelector('[data-active-tab]');
+    const tabButtons = document.querySelectorAll('[data-tab]');
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.tab;
+        if (paneContainer) paneContainer.dataset.activeTab = target;
+        tabButtons.forEach(other => {
+          const active = other === btn;
+          other.classList.toggle('text-signal', active);
+          other.classList.toggle('border-signal', active);
+          other.classList.toggle('opacity-60', !active);
+          other.classList.toggle('border-transparent', !active);
+        });
+      });
+    });
+
+    // ─── Filter chips + search ───────────────────────────────────────────
+    const filterChips = document.querySelectorAll('.filter-chip');
+    const searchInput = document.getElementById('topic-search');
+    const topicsList = document.getElementById('topics-list');
+    const topicsEmpty = document.getElementById('topics-empty');
+    let activeFilter = 'open';
+
+    function applyFilters() {
+      if (!topicsList) return;
+      const q = (searchInput?.value ?? '').trim().toLowerCase();
+      let visible = 0;
+      topicsList.querySelectorAll('[data-suggestion-card]').forEach(card => {
+        const status = card.dataset.suggestionStatus;
+        const matchesFilter = activeFilter === 'all' || activeFilter === status;
+        const matchesSearch = !q || (card.textContent || '').toLowerCase().includes(q);
+        const show = matchesFilter && matchesSearch;
+        card.classList.toggle('hidden', !show);
+        if (show) visible++;
+      });
+      topicsEmpty?.classList.toggle('hidden', visible > 0);
+    }
+    filterChips.forEach(b => {
+      b.addEventListener('click', () => {
+        activeFilter = b.dataset.filter;
+        filterChips.forEach(other => {
+          const active = other === b;
+          other.classList.toggle('btn-primary', active);
+          other.classList.toggle('btn-ghost', !active);
+          other.classList.toggle('border', !active);
+          other.classList.toggle('border-base-300', !active);
+        });
+        applyFilters();
+      });
+    });
+    searchInput?.addEventListener('input', applyFilters);
+    // Initial pass — default filter is "open", which was set as the active
+    // chip above; hide scheduled cards on first paint.
+    applyFilters();
+
+    // ─── Join, upvote, schedule, unschedule ──────────────────────────────
     const joinBtn = document.getElementById('join-btn');
     joinBtn?.addEventListener('click', async () => {
       joinBtn.disabled = true;

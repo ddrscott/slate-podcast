@@ -62,6 +62,7 @@ const hasActions = (isSpeaker && isOpen) || canUnschedule;
 
 <article
   data-suggestion-card={s.id}
+  data-suggestion-status={s.status}
   class={`rounded border ${cardBorder} ${cardBg} transition-colors`}
 >
   <div class="flex items-stretch gap-2 p-3">
