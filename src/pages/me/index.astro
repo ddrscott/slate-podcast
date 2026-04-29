@@ -11,8 +11,15 @@ if (!user) return Astro.redirect(signInUrlForCtx(Astro, '/me'));
 
 const db = getDb(Astro);
 
-const me = await db.prepare('SELECT headshot_url, display_name FROM users WHERE id = ?')
-  .bind(user.id).first<{ headshot_url: string | null; display_name: string | null }>();
+const me = await db.prepare(
+  'SELECT headshot_url, display_name, tagline, bio, link FROM users WHERE id = ?',
+).bind(user.id).first<{
+  headshot_url: string | null;
+  display_name: string | null;
+  tagline: string | null;
+  bio: string | null;
+  link: string | null;
+}>();
 const myName = displayName({ display_name: me?.display_name ?? null, email: user.email });
 const gravatarHash = Astro.locals.jwt?.gravatarHash ?? '';
 
@@ -71,17 +78,44 @@ const myTopics = await db.prepare(
         </div>
       </div>
 
-      <form id="profile-form" class="mt-6 max-w-md space-y-2">
-        <label class="form-control">
+      <form id="profile-form" class="mt-6 max-w-md space-y-3">
+        <label class="form-control block">
           <span class="label-text text-sm">Display name</span>
           <input id="display-name-input" name="display_name" type="text" maxlength="80"
                  placeholder={emailLocal(user.email)}
                  value={me?.display_name ?? ''}
-                 class="input input-bordered" />
-          <span class="text-xs opacity-60 mt-1">
+                 class="input input-bordered w-full" />
+          <span class="text-xs opacity-60 mt-1 block">
             Shown wherever you appear in the app. Leave blank to use <code class="font-mono">{emailLocal(user.email)}</code>.
           </span>
         </label>
+
+        <label class="form-control block">
+          <span class="label-text text-sm">Tagline</span>
+          <input id="tagline-input" name="tagline" type="text" maxlength="140"
+                 placeholder="One line under your name (e.g., Tech writer, ex-NYT)"
+                 value={me?.tagline ?? ''}
+                 class="input input-bordered w-full" />
+          <span class="text-xs opacity-60 mt-1 block">Shown on the slate landing card. Optional.</span>
+        </label>
+
+        <label class="form-control block">
+          <span class="label-text text-sm">Bio</span>
+          <textarea id="bio-input" name="bio" maxlength="600" rows="3"
+                    placeholder="One or two sentences about you."
+                    class="textarea textarea-bordered w-full">{me?.bio ?? ''}</textarea>
+          <span class="text-xs opacity-60 mt-1 block">Up to 600 characters. Optional.</span>
+        </label>
+
+        <label class="form-control block">
+          <span class="label-text text-sm">Link</span>
+          <input id="link-input" name="link" type="url" maxlength="200"
+                 placeholder="https://your-site.com"
+                 value={me?.link ?? ''}
+                 class="input input-bordered w-full" />
+          <span class="text-xs opacity-60 mt-1 block">Personal site, X, LinkedIn — pick one. Optional.</span>
+        </label>
+
         <div class="flex flex-wrap gap-2 items-center">
           <button type="submit" class="btn btn-primary btn-sm">Save</button>
           {gravatarHash && (
@@ -225,14 +259,28 @@ const myTopics = await db.prepare(
         status.textContent = msg ?? '';
       }
 
+      const taglineInput = document.getElementById('tagline-input');
+      const bioInput = document.getElementById('bio-input');
+      const linkInput = document.getElementById('link-input');
+
+      // Empty string → null so the API treats it as a clear, not a no-op.
+      const norm = (v) => {
+        const t = (v ?? '').trim();
+        return t === '' ? null : t;
+      };
+
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         setStatus('Saving…');
-        const value = nameInput.value.trim();
         const res = await fetch('/api/me/profile', {
           method: 'PATCH',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ display_name: value === '' ? null : value }),
+          body: JSON.stringify({
+            display_name: norm(nameInput.value),
+            tagline:      norm(taglineInput?.value),
+            bio:          norm(bioInput?.value),
+            link:         norm(linkInput?.value),
+          }),
         });
         if (res.ok) {
           setStatus('Saved.', 'success');

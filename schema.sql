@@ -9,17 +9,26 @@ PRAGMA foreign_keys = ON;
 -- `display_name` is what we render wherever a person appears in the UI;
 -- when null, the helper falls back to the local part of `email`.
 -- `headshot_url` is the public URL of the user's uploaded profile image (R2).
+-- `bio` is 1–2 sentences shown under the name on the marquee landing.
+-- `tagline` is a one-line subhead ("Tech writer, ex-NYT"), optional.
+-- `link` is a single canonical URL (personal site / X / etc.) — one field
+-- on purpose so we don't sprawl into N social-icon columns.
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   display_name TEXT,
-  headshot_url TEXT
+  headshot_url TEXT,
+  bio TEXT,
+  tagline TEXT,
+  link TEXT
 );
 
 -- ─── Slate ─────────────────────────────────────────────────────────────────
 -- Top-level. Created by App Admins (anyone with the auth.ljs.app `admin` or
 -- `slate:admin` JWT scope). Slug is globally unique and mutable — change it
 -- to a hard-to-guess string for soft privacy.
+-- `cover_image_url` is the public URL (under /media) of the slate's
+-- marquee hero artwork. Optional; null falls back to a typographic header.
 CREATE TABLE IF NOT EXISTS slates (
   id TEXT PRIMARY KEY,
   slug TEXT UNIQUE NOT NULL,
@@ -27,6 +36,7 @@ CREATE TABLE IF NOT EXISTS slates (
   description TEXT,
   timezone TEXT NOT NULL DEFAULT 'America/Chicago',
   is_public INTEGER NOT NULL DEFAULT 1,
+  cover_image_url TEXT,
   created_by TEXT NOT NULL REFERENCES users(id),
   created_at INTEGER NOT NULL
 );

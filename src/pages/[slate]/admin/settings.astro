@@ -13,8 +13,11 @@ if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/admin/settings
 
 const db = getDb(Astro);
 const slate = await db.prepare(
-  `SELECT id, slug, name, description, timezone, is_public FROM slates WHERE slug = ?`,
-).bind(slug).first<{ id: string; slug: string; name: string; description: string | null; timezone: string; is_public: number }>();
+  `SELECT id, slug, name, description, timezone, is_public, cover_image_url FROM slates WHERE slug = ?`,
+).bind(slug).first<{
+  id: string; slug: string; name: string; description: string | null;
+  timezone: string; is_public: number; cover_image_url: string | null;
+}>();
 if (!slate) return new Response('Not found', { status: 404 });
 
 const member = await db.prepare(
@@ -32,6 +35,30 @@ if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
     <p class="opacity-75 text-sm mt-1 mb-6">
       Changing the slug breaks the old public URL — useful for soft privacy.
     </p>
+
+    {/* Cover image — separate from the settings form because it's a binary
+        upload, not a JSON PATCH. Uses /api/slates/[id]/cover (host-only). */}
+    <div class="mb-8 pb-6 border-b border-base-300">
+      <h2 class="font-semibold text-sm mb-2">Cover image</h2>
+      <p class="text-xs opacity-60 mb-3">Hero artwork for the public landing page. Optional.</p>
+      <div class="flex items-start gap-4">
+        <div id="cover-preview" class="w-40 aspect-[16/9] rounded border border-base-300 bg-base-200 overflow-hidden flex items-center justify-center text-xs opacity-60">
+          {slate.cover_image_url
+            ? <img src={slate.cover_image_url} alt="" class="w-full h-full object-cover" />
+            : <span class="font-mono">no image</span>}
+        </div>
+        <div class="flex flex-col gap-2">
+          <label class="btn btn-xs btn-ghost border border-base-300 cursor-pointer w-fit">
+            <input id="cover-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
+            {slate.cover_image_url ? 'Replace' : 'Upload'}
+          </label>
+          {slate.cover_image_url && (
+            <button id="cover-remove" type="button" class="btn btn-xs btn-ghost border border-base-300 text-error w-fit">Remove</button>
+          )}
+          <span id="cover-status" class="text-xs opacity-70"></span>
+        </div>
+      </div>
+    </div>
 
     <form id="settings-form" class="space-y-4">
       <label class="form-control">
@@ -66,6 +93,48 @@ if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
 
     <p class="mt-6 text-sm"><a href={`/${slug}/admin`} class="link">← Slate admin</a></p>
   </section>
+
+  <script is:inline define:vars={{ slateId: slate.id }}>
+    (() => {
+      const input = document.getElementById('cover-input');
+      const removeBtn = document.getElementById('cover-remove');
+      const status = document.getElementById('cover-status');
+      const preview = document.getElementById('cover-preview');
+
+      function setStatus(msg, kind) {
+        status.classList.remove('text-error', 'text-success');
+        if (kind) status.classList.add(`text-${kind}`);
+        status.textContent = msg ?? '';
+      }
+
+      input?.addEventListener('change', async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) { setStatus('File too large (max 5 MB).', 'error'); return; }
+        setStatus('Uploading…');
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch(`/api/slates/${slateId}/cover`, { method: 'POST', body: fd });
+        if (res.ok) {
+          const body = await res.json();
+          preview.innerHTML = `<img src="${body.cover_image_url}" alt="" class="w-full h-full object-cover" />`;
+          setStatus('Saved.', 'success');
+          setTimeout(() => location.reload(), 600);
+        } else {
+          const e = await res.json().catch(() => ({}));
+          setStatus(`Failed: ${e.error ?? res.status}`, 'error');
+        }
+      });
+
+      removeBtn?.addEventListener('click', async () => {
+        if (!confirm('Remove the cover image?')) return;
+        setStatus('Removing…');
+        const res = await fetch(`/api/slates/${slateId}/cover`, { method: 'DELETE' });
+        if (res.ok) location.reload();
+        else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
+      });
+    })();
+  </script>
 
   <script is:inline define:vars={{ slateId: slate.id, currentSlug: slate.slug }}>
     const form = document.getElementById('settings-form');
