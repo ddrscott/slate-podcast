@@ -9,8 +9,9 @@ export const prerender = false;
 // Public landing page for a slate. Always renders the network-marquee
 // view regardless of who's looking — visitors, signed-in non-members,
 // members, and hosts all land here. Members navigate to /[slate]/edit
-// for the dashboard (vote/suggest/claim) and /[slate]/admin for slate
-// configuration. The "Open dashboard" CTA on the marquee gets them there.
+// for everything else (vote/suggest/claim, plus host-only sub-tabs:
+// settings, people, rules, slots, archive). The "Open dashboard" CTA
+// on the marquee gets them there.
 
 const slug = Astro.params.slate;
 if (!slug) return new Response('Not found', { status: 404 });

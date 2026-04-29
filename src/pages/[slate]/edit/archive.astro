@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import EditSubnav from '@/components/EditSubnav.astro';
 import ScheduleTopicPanel from '@/components/ScheduleTopicPanel.astro';
 import { getDb } from '@/lib/db';
 import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
@@ -11,7 +12,7 @@ const slug = Astro.params.slate;
 if (!slug) return new Response('Not found', { status: 404 });
 
 const user = Astro.locals.user;
-if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/admin/topics`));
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/edit/archive`));
 
 const db = getDb(Astro);
 const slate = await db.prepare('SELECT id, name, timezone FROM slates WHERE slug = ?').bind(slug)
@@ -48,14 +49,15 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
 });
 ---
 
-<Layout title={`Moderate topics · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+<Layout title={`Archive · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}
+        slateContext={{ isMember: true, isHost: true, role: 'host' }}>
+  <EditSubnav slug={slug!} isHost={true} current="archive" />
   <section class="py-6 max-w-4xl">
     <div class="flex items-baseline justify-between mb-4">
       <div>
         <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
         <h1 class="text-2xl font-bold">Moderate topics</h1>
       </div>
-      <a href={`/${slug}/admin`} class="btn btn-sm btn-ghost border border-base-300">← Slate admin</a>
     </div>
 
     <div class="space-y-2">

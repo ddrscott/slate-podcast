@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import EditSubnav from '@/components/EditSubnav.astro';
 import { getDb } from '@/lib/db';
 import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
 
@@ -9,7 +10,7 @@ const slug = Astro.params.slate;
 if (!slug) return new Response('Not found', { status: 404 });
 
 const user = Astro.locals.user;
-if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/admin/rules`));
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/edit/rules`));
 
 const db = getDb(Astro);
 const slate = await db.prepare('SELECT id, name, timezone FROM slates WHERE slug = ?').bind(slug)
@@ -34,7 +35,9 @@ const todayInTz = new Intl.DateTimeFormat('en-CA', {
 }).format(new Date());
 ---
 
-<Layout title={`Rules · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+<Layout title={`Rules · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}
+        slateContext={{ isMember: true, isHost: true, role: 'host' }}>
+  <EditSubnav slug={slug!} isHost={true} current="rules" />
   <section class="py-8 max-w-4xl">
     <p class="font-mono text-sm text-signal mb-1">// {slate.name} · {slate.timezone}</p>
     <h1 class="text-2xl font-bold">Scheduling rules</h1>
@@ -147,7 +150,6 @@ const todayInTz = new Intl.DateTimeFormat('en-CA', {
       </div>
     </div>
 
-    <a href={`/${slug}/admin`} class="link text-sm">← Back to slate admin</a>
   </section>
 
   <script is:inline define:vars={{ slateId: slate.id }}>
@@ -186,7 +188,7 @@ const todayInTz = new Intl.DateTimeFormat('en-CA', {
       status.classList.remove('hidden', 'text-error', 'text-success');
       status.textContent = 'Adding…';
 
-      const res = await fetch(`/api/slates/${slateId}/admin/rules`, {
+      const res = await fetch(`/api/slates/${slateId}/edit/rules`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
@@ -207,7 +209,7 @@ const todayInTz = new Intl.DateTimeFormat('en-CA', {
       const regenStatus = document.getElementById('regen-status');
       regenStatus.classList.remove('hidden', 'text-error', 'text-success');
       regenStatus.textContent = 'Regenerating…';
-      const res = await fetch(`/api/slates/${slateId}/admin/regenerate-slots`, {
+      const res = await fetch(`/api/slates/${slateId}/edit/regenerate-slots`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({}),

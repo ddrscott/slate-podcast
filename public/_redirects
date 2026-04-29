@@ -1,7 +1,16 @@
-# Legacy URLs from before the speakers→hosts / suggestions→topics rename.
-# Cloudflare honors this file at the edge. Astro's built-in `redirects` map
+# Legacy URLs preserved at the edge.
+# Cloudflare honors this file directly. Astro's built-in `redirects` map
 # can't be used here because the Cloudflare adapter appends /index.html to
 # destinations, which breaks redirects to server-rendered pages.
+
+# speakers→hosts / suggestions→topics rename (commit 6f3c7e2)
 /:slate/suggest              /:slate/topics/new        301
 /:slate/suggestions          /:slate/topics            301
-/:slate/admin/suggestions    /:slate/admin/topics      301
+
+# admin/* collapsed into edit/* (single Manage area)
+/:slate/admin                /:slate/edit              301
+/:slate/admin/settings       /:slate/edit/settings     301
+/:slate/admin/people         /:slate/edit/people       301
+/:slate/admin/rules          /:slate/edit/rules        301
+/:slate/admin/slots          /:slate/edit/slots        301
+/:slate/admin/topics         /:slate/edit/archive      301

@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import EditSubnav from '@/components/EditSubnav.astro';
 import { getDb } from '@/lib/db';
 import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
 
@@ -9,7 +10,7 @@ const slug = Astro.params.slate;
 if (!slug) return new Response('Not found', { status: 404 });
 
 const user = Astro.locals.user;
-if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/admin/settings`));
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/edit/settings`));
 
 const db = getDb(Astro);
 const slate = await db.prepare(
@@ -28,7 +29,9 @@ if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
 }
 ---
 
-<Layout title={`Settings · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+<Layout title={`Settings · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}
+        slateContext={{ isMember: true, isHost: true, role: 'host' }}>
+  <EditSubnav slug={slug!} isHost={true} current="settings" />
   <section class="py-8 max-w-2xl">
     <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
     <h1 class="text-2xl font-bold">Slate settings</h1>
@@ -91,7 +94,6 @@ if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
       <p id="status" class="text-sm hidden"></p>
     </form>
 
-    <p class="mt-6 text-sm"><a href={`/${slug}/admin`} class="link">← Slate admin</a></p>
   </section>
 
   <script is:inline define:vars={{ slateId: slate.id }}>
@@ -181,7 +183,7 @@ if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
       });
       if (res.ok) {
         if (newSlug !== currentSlug) {
-          location.href = `/${newSlug}/admin/settings`;
+          location.href = `/${newSlug}/edit/settings`;
         } else {
           status.classList.add('text-success');
           status.textContent = 'Saved.';

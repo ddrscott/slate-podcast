@@ -4,6 +4,7 @@ import ScheduleTopicPanel from '@/components/ScheduleTopicPanel.astro';
 import TopicDetailPanel from '@/components/TopicDetailPanel.astro';
 import TopicCard from '@/components/TopicCard.astro';
 import SlateSidebar from '@/components/SlateSidebar.astro';
+import EditSubnav from '@/components/EditSubnav.astro';
 import { getDb, getEnv } from '@/lib/db';
 import { isAppAdmin, signInUrl } from '@/lib/auth';
 
@@ -128,6 +129,7 @@ const unreadActivity = row?.n ?? 0;
   slate={{ name: slate.name, slug: slate.slug }}
   slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null, unreadActivity }}
 >
+  <EditSubnav slug={slate.slug} isHost={isHost} current="topics" />
   <div class="lg:flex lg:gap-8 lg:items-start">
     {/* Sidebar (desktop only) — categories + mini calendar.
         On mobile the same sidebar lives in a drawer below. */}

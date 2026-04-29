@@ -1,0 +1,56 @@
+---
+// Tab strip rendered at the top of every /[slate]/edit/* page. Members
+// see only "Topics" (the default tab); hosts see all six. Active tab
+// is matched on the URL pathname so each page passes its own `current`
+// key — saves repeating the URL match logic in every page.
+//
+// Adding a tab: append to TABS, mark hostOnly if it's a host-only page,
+// pass the key from the page's frontmatter.
+
+interface Props {
+  slug: string;
+  isHost: boolean;
+  current: 'topics' | 'archive' | 'slots' | 'rules' | 'people' | 'settings';
+}
+
+const { slug, isHost, current } = Astro.props;
+
+const TABS: { key: Props['current']; label: string; href: string; hostOnly: boolean }[] = [
+  { key: 'topics',   label: 'Topics',   href: `/${slug}/edit`,           hostOnly: false },
+  { key: 'archive',  label: 'Archive',  href: `/${slug}/edit/archive`,   hostOnly: true  },
+  { key: 'slots',    label: 'Slots',    href: `/${slug}/edit/slots`,     hostOnly: true  },
+  { key: 'rules',    label: 'Rules',    href: `/${slug}/edit/rules`,     hostOnly: true  },
+  { key: 'people',   label: 'People',   href: `/${slug}/edit/people`,    hostOnly: true  },
+  { key: 'settings', label: 'Settings', href: `/${slug}/edit/settings`,  hostOnly: true  },
+];
+
+const visibleTabs = TABS.filter(t => isHost || !t.hostOnly);
+
+// If the only visible tab is the one we're already on, the strip adds
+// nothing — skip rendering rather than draw a one-pill nav.
+const showNav = visibleTabs.length > 1;
+---
+
+{showNav && (
+  <nav aria-label="Manage sections" class="-mx-4 px-4 mb-6 border-b border-base-300 overflow-x-auto">
+    <ul class="flex items-center gap-1 sm:gap-2 text-sm whitespace-nowrap">
+      {visibleTabs.map(t => {
+        const isActive = t.key === current;
+        return (
+          <li>
+            <a href={t.href}
+               aria-current={isActive ? 'page' : undefined}
+               class={[
+                 'inline-block px-3 py-2 -mb-px border-b-2 transition-colors',
+                 isActive
+                   ? 'border-signal text-signal font-semibold'
+                   : 'border-transparent opacity-70 hover:opacity-100 hover:text-signal',
+               ].join(' ')}>
+              {t.label}
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  </nav>
+)}
