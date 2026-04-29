@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getDb, now } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireAppAdmin } from '@/lib/access';
+import { logActivity } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -35,6 +36,13 @@ export const POST: APIRoute = async (ctx) => {
          promoted_at = excluded.promoted_at,
          promoted_by = excluded.promoted_by`,
     ).bind(slateId, userId, t, t, admin.id).run();
+
+    await logActivity(ctx, {
+      kind: 'speaker_promoted',
+      slateId,
+      actorId: admin.id,
+      targetUserId: userId,
+    });
 
     return jsonOk({ user_id: userId, role: 'speaker' });
   } catch (err) { return jsonError(err); }

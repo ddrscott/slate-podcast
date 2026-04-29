@@ -1,0 +1,182 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getDb } from '@/lib/db';
+import { signInUrlForCtx, isAppAdmin } from '@/lib/auth';
+
+export const prerender = false;
+
+const slug = Astro.params.slate;
+if (!slug) return new Response('Not found', { status: 404 });
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/activity`));
+
+const db = getDb(Astro);
+const slate = await db.prepare('SELECT id, name, timezone, is_public FROM slates WHERE slug = ?').bind(slug)
+  .first<{ id: string; name: string; timezone: string; is_public: number }>();
+if (!slate) return new Response('Not found', { status: 404 });
+
+const isAdmin = isAppAdmin(user.scopes);
+const member = await db.prepare(
+  'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
+).bind(slate.id, user.id).first<{ role: string }>();
+if (!isAdmin && !member) return Astro.redirect(`/${slug}/join`);
+
+const seen = await db.prepare(
+  'SELECT watermark_at FROM activity_seen WHERE user_id = ? AND slate_id = ?',
+).bind(user.id, slate.id).first<{ watermark_at: number }>();
+const watermark = seen?.watermark_at ?? 0;
+
+const rows = await db.prepare(
+  `SELECT a.id, a.kind, a.created_at, a.meta,
+          actor.email AS actor_email,
+          target.email AS target_email,
+          a.suggestion_id, sug.title AS suggestion_title,
+          a.slot_id, sl.start_time AS slot_start
+   FROM activity a
+   LEFT JOIN users  actor  ON actor.id  = a.actor_id
+   LEFT JOIN users  target ON target.id = a.target_user_id
+   LEFT JOIN suggestions sug ON sug.id = a.suggestion_id
+   LEFT JOIN slots sl ON sl.id = a.slot_id
+   WHERE a.slate_id = ?
+   ORDER BY a.created_at DESC
+   LIMIT 100`,
+).bind(slate.id).all<any>();
+
+const fmtRel = (sec: number) => {
+  const d = new Date(sec * 1000);
+  const diff = (Date.now() - sec * 1000) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 7 * 86400) return `${Math.floor(diff / 86400)}d ago`;
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: slate.timezone, month: 'short', day: 'numeric',
+  }).format(d);
+};
+
+const fmtSlotTime = (sec: number) => new Intl.DateTimeFormat('en-US', {
+  timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
+  hour: 'numeric', minute: '2-digit',
+}).format(new Date(sec * 1000));
+
+const KIND_LABEL: Record<string, string> = {
+  member_joined:       'joined as a Member',
+  speaker_promoted:    'was promoted to Speaker by',
+  speaker_demoted:     'was demoted to Member by',
+  suggestion_posted:   'suggested',
+  suggestion_archived: 'archived',
+  slot_scheduled:      'scheduled',
+  slot_unscheduled:    'unscheduled',
+  notes_published:     'published show notes for',
+  slate_renamed:       'renamed the slate',
+};
+
+const unreadCount = rows.results.filter((r: any) => r.created_at > watermark).length;
+---
+
+<Layout title={`Activity · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+  <section class="py-6 max-w-3xl">
+    <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+      <div>
+        <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
+        <h1 class="text-2xl font-bold flex items-baseline gap-2">
+          Activity
+          {unreadCount > 0 && <span class="badge badge-sm badge-primary">{unreadCount} new</span>}
+        </h1>
+        <p class="text-xs opacity-60 mt-1">Newest first. Catch up on what's changed since you last looked.</p>
+      </div>
+      <div class="flex gap-2">
+        {unreadCount > 0 && (
+          <button id="mark-read-btn" class="btn btn-sm btn-primary">Mark all as read</button>
+        )}
+        <a href={`/${slug}`} class="btn btn-sm btn-ghost border border-base-300">← Schedule</a>
+      </div>
+    </div>
+
+    <ul class="space-y-1">
+      {rows.results.length === 0 && (
+        <li class="opacity-60 text-sm py-4">Nothing's happened on this slate yet.</li>
+      )}
+      {rows.results.map((r: any) => {
+        const isNew = r.created_at > watermark;
+        const verb = KIND_LABEL[r.kind] ?? r.kind;
+        const meta = r.meta ? JSON.parse(r.meta) : {};
+        return (
+          <li class={`flex items-start gap-3 p-3 border rounded ${isNew ? 'border-signal bg-signal-50' : 'border-base-300 bg-base-100 opacity-90'}`}>
+            <div class={`mt-1 h-2 w-2 rounded-full shrink-0 ${isNew ? 'bg-signal' : 'bg-base-300'}`} aria-hidden="true"></div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm">
+                {/* member_joined / suggestion_posted / suggestion_archived /
+                    slot_scheduled / slot_unscheduled / notes_published */}
+                {(r.kind === 'member_joined' ||
+                  r.kind === 'suggestion_posted' ||
+                  r.kind === 'suggestion_archived' ||
+                  r.kind === 'slot_scheduled' ||
+                  r.kind === 'slot_unscheduled' ||
+                  r.kind === 'notes_published') && (
+                  <>
+                    <span class="font-mono opacity-80">{r.actor_email ?? 'someone'}</span>
+                    <span class="opacity-75"> {verb}</span>
+                    {r.suggestion_title && (
+                      <>
+                        {' '}
+                        <a href={`/${slug}/suggestions`} class="font-semibold link link-hover">"{r.suggestion_title}"</a>
+                      </>
+                    )}
+                    {r.kind === 'slot_scheduled' && r.slot_start && (
+                      <>
+                        {' '}
+                        <span class="opacity-75">for</span>
+                        {' '}
+                        <a href={`/${slug}/slot/${r.slot_id}`} class="font-mono text-xs underline-offset-2 hover:underline">
+                          {fmtSlotTime(r.slot_start)}
+                        </a>
+                      </>
+                    )}
+                  </>
+                )}
+
+                {/* speaker_promoted / speaker_demoted — target + actor */}
+                {(r.kind === 'speaker_promoted' || r.kind === 'speaker_demoted') && (
+                  <>
+                    <span class="font-mono opacity-80">{r.target_email ?? '(removed)'}</span>
+                    <span class="opacity-75"> {verb}</span>
+                    {' '}
+                    <span class="font-mono opacity-60">{r.actor_email ?? 'an admin'}</span>
+                  </>
+                )}
+
+                {/* slate_renamed */}
+                {r.kind === 'slate_renamed' && meta.from && meta.to && (
+                  <>
+                    <span class="opacity-75">{verb}: </span>
+                    <span class="font-mono opacity-60 line-through">{meta.from}</span>
+                    <span class="opacity-50"> → </span>
+                    <span class="font-mono">{meta.to}</span>
+                  </>
+                )}
+              </p>
+              <p class="text-xs opacity-50 font-mono mt-1">{fmtRel(r.created_at)}</p>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+
+    {rows.results.length === 100 && (
+      <p class="text-xs opacity-50 mt-4 text-center">Showing the most recent 100 events.</p>
+    )}
+  </section>
+
+  <script is:inline define:vars={{ slateId: slate.id }}>
+    document.getElementById('mark-read-btn')?.addEventListener('click', async () => {
+      const res = await fetch(`/api/slates/${slateId}/activity/mark-read`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+      });
+      if (res.ok) location.reload();
+      else alert((await res.json().catch(() => ({}))).error ?? res.status);
+    });
+  </script>
+</Layout>

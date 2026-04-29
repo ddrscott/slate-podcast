@@ -139,6 +139,32 @@ CREATE TABLE IF NOT EXISTS suggestion_votes (
 );
 CREATE INDEX IF NOT EXISTS idx_votes_user ON suggestion_votes(user_id);
 
+-- ─── Activity log ──────────────────────────────────────────────────────────
+-- Per-slate event stream. New events appended on the relevant mutation
+-- endpoints (member join, speaker promotion, suggestion posted, slot
+-- scheduled/unscheduled, show notes published). Read state is tracked
+-- per-user-per-slate as a high-water mark — `created_at <= watermark_at`
+-- means the user has seen it.
+CREATE TABLE IF NOT EXISTS activity (
+  id TEXT PRIMARY KEY,
+  slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
+  actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL,
+  suggestion_id TEXT REFERENCES suggestions(id) ON DELETE SET NULL,
+  slot_id TEXT REFERENCES slots(id) ON DELETE SET NULL,
+  target_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  meta TEXT,                                                    -- JSON; free-form per-kind payload
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activity_slate_time ON activity(slate_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS activity_seen (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
+  watermark_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, slate_id)
+);
+
 -- ─── Reminder dedupe (cron worker) ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sent_reminders (
   slot_id TEXT NOT NULL REFERENCES slots(id) ON DELETE CASCADE,

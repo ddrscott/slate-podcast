@@ -77,6 +77,19 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
   hour: 'numeric', minute: '2-digit',
 });
 
+// Unread-activity count for the current user (only when they're a member).
+let unreadActivity = 0;
+if (user && (isMember || isAppAdmin(user.scopes))) {
+  const watermark = await db.prepare(
+    'SELECT watermark_at FROM activity_seen WHERE user_id = ? AND slate_id = ?',
+  ).bind(user.id, slate.id).first<{ watermark_at: number }>();
+  const wm = watermark?.watermark_at ?? 0;
+  const row = await db.prepare(
+    'SELECT COUNT(*) AS n FROM activity WHERE slate_id = ? AND created_at > ?',
+  ).bind(slate.id, wm).first<{ n: number }>();
+  unreadActivity = row?.n ?? 0;
+}
+
 const env = getEnv(Astro);
 const url = new URL(Astro.request.url);
 const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
@@ -99,6 +112,12 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
         <>
           <a href={`/${slate.slug}/suggest`} class="btn btn-primary btn-sm">+ Suggest a topic</a>
           <a href={`/${slate.slug}/suggestions`} class="btn btn-ghost btn-sm border border-base-300">All suggestions →</a>
+          <a href={`/${slate.slug}/activity`} class="btn btn-ghost btn-sm border border-base-300 relative">
+            Activity
+            {unreadActivity > 0 && (
+              <span class="badge badge-primary badge-sm ml-2">{unreadActivity}</span>
+            )}
+          </a>
         </>
       )}
       {isSpeaker && (

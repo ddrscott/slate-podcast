@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { getDb, now } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate, requireUser } from '@/lib/access';
 import { isAppAdmin } from '@/lib/auth';
+import { logActivity } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -69,6 +70,14 @@ export const POST: APIRoute = async (ctx) => {
     }
     await db.batch(stmts);
 
+    await logActivity(ctx, {
+      kind: 'slot_scheduled',
+      slateId: slot.slate_id,
+      actorId: user.id,
+      slotId,
+      suggestionId,
+    });
+
     return jsonOk({ slot_id: slotId, suggestion_id: suggestionId, status: 'confirmed' });
   } catch (err) { return jsonError(err); }
 };
@@ -107,6 +116,14 @@ export const DELETE: APIRoute = async (ctx) => {
       ).bind(slot.suggestion_id));
     }
     await db.batch(stmts);
+
+    await logActivity(ctx, {
+      kind: 'slot_unscheduled',
+      slateId: slot.slate_id,
+      actorId: user.id,
+      slotId,
+      suggestionId: slot.suggestion_id ?? null,
+    });
 
     return jsonOk({ slot_status: 'open' });
   } catch (err) { return jsonError(err); }

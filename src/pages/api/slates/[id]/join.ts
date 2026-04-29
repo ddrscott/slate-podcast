@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getDb, now } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireUser } from '@/lib/access';
+import { logActivity } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -27,6 +28,8 @@ export const POST: APIRoute = async (ctx) => {
       `INSERT INTO slate_members (slate_id, user_id, role, joined_at)
        VALUES (?, ?, 'member', ?)`,
     ).bind(slateId, user.id, now()).run();
+
+    await logActivity(ctx, { kind: 'member_joined', slateId, actorId: user.id });
 
     return jsonOk({ role: 'member' }, 201);
   } catch (err) { return jsonError(err); }
