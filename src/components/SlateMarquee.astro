@@ -1,0 +1,332 @@
+---
+// Public landing page for a slate. Shown to visitors and signed-in
+// non-members; current Members and Hosts get the management view in
+// [slate]/index.astro instead.
+//
+// Direction A — Network Marquee. The slate is framed as a network of
+// hosts; the page sells the program emotionally before the form layer
+// (vote / suggest / claim) shows up after sign-in.
+
+import { displayName, emailLocal } from '@/lib/people';
+
+interface Host {
+  id: string;
+  display_name: string | null;
+  email: string;
+  headshot_url: string | null;
+  tagline: string | null;
+  bio: string | null;
+  link: string | null;
+  episode_count: number;
+}
+
+interface UpcomingSlot {
+  id: string;
+  start_time: number;
+  title: string | null;
+  host_display_name: string | null;
+  host_email: string | null;
+  host_headshot_url: string | null;
+}
+
+interface TopTopic {
+  id: string;
+  title: string;
+  upvote_count: number;
+}
+
+interface PastEpisode {
+  id: string;
+  start_time: number;
+  title: string | null;
+  host_display_name: string | null;
+  host_email: string | null;
+}
+
+interface Props {
+  slate: {
+    id: string;
+    slug: string;
+    name: string;
+    description: string | null;
+    timezone: string;
+    cover_image_url: string | null;
+  };
+  hosts: Host[];
+  upcoming: UpcomingSlot[];
+  topTopics: TopTopic[];
+  pastEpisodes: PastEpisode[];
+  signInHref: string;
+  isSignedIn: boolean;
+}
+
+const { slate, hosts, upcoming, topTopics, pastEpisodes, signInHref, isSignedIn } = Astro.props;
+
+const fmtUpcoming = new Intl.DateTimeFormat('en-US', {
+  timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
+});
+const fmtUpcomingTime = new Intl.DateTimeFormat('en-US', {
+  timeZone: slate.timezone, hour: 'numeric', minute: '2-digit',
+});
+const fmtPast = new Intl.DateTimeFormat('en-US', {
+  timeZone: slate.timezone, month: 'short', day: 'numeric', year: 'numeric',
+});
+
+const initials = (h: { display_name: string | null; email: string }) =>
+  displayName({ display_name: h.display_name, email: h.email }).charAt(0).toUpperCase();
+
+const hostName = (h: { display_name: string | null; email: string }) =>
+  displayName({ display_name: h.display_name, email: h.email });
+
+const hostNameOrFallback = (display: string | null, email: string | null) =>
+  email ? displayName({ display_name: display, email }) : '(unassigned)';
+
+const hostCount = hosts.length;
+const topicCount = topTopics.length;
+const episodeCount = pastEpisodes.length;
+
+// Primary CTA wording depends on signed-in state. If the user is signed
+// in but landed here, they're a non-member viewing a public slate — the
+// CTA is "Join as a Member"; if they're a visitor, it's "Sign in to vote".
+const primaryCtaLabel = isSignedIn ? 'Join as a Member' : 'Sign in to vote';
+const primaryCtaHref  = isSignedIn ? `/${slate.slug}/join` : signInHref;
+---
+
+<article class="-mt-8">
+  {/* ─── Hero ────────────────────────────────────────────────────────── */}
+  <section class="relative -mx-4 px-4 py-12 md:py-20 overflow-hidden border-b border-base-300">
+    {slate.cover_image_url && (
+      <div class="absolute inset-0 -z-10">
+        <img src={slate.cover_image_url} alt=""
+             class="w-full h-full object-cover opacity-30" />
+        <div class="absolute inset-0 bg-gradient-to-b from-base-100/60 via-base-100/80 to-base-100"></div>
+      </div>
+    )}
+    {!slate.cover_image_url && (
+      <div class="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-signal/5 via-base-100 to-base-100"></div>
+    )}
+
+    <div class="max-w-4xl">
+      <p class="font-mono text-xs md:text-sm text-signal mb-4">
+        // a network of {hostCount === 1 ? 'one host' : `${hostCount} hosts`} · {slate.timezone.split('/').pop()?.replace('_', ' ')}
+      </p>
+      <h1 class="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[0.95]">
+        {slate.name}
+      </h1>
+      {slate.description && (
+        <p class="mt-6 text-lg md:text-xl opacity-80 max-w-2xl leading-relaxed">
+          {slate.description}
+        </p>
+      )}
+      <div class="mt-6 inline-block w-12 h-[3px] bg-signal"></div>
+      <div class="mt-8 flex flex-wrap items-center gap-3">
+        <a href={primaryCtaHref} class="btn btn-primary">{primaryCtaLabel}</a>
+        {topicCount > 0 && (
+          <a href="#topics" class="btn btn-ghost border border-base-300">
+            Browse {topicCount} {topicCount === 1 ? 'topic' : 'topics'} →
+          </a>
+        )}
+        {!isSignedIn && (
+          <span class="text-xs opacity-60 font-mono ml-2">free · email magic-link</span>
+        )}
+      </div>
+    </div>
+  </section>
+
+  {/* ─── Hosts rail ──────────────────────────────────────────────────── */}
+  {hosts.length > 0 && (
+    <section class="py-12 md:py-16">
+      <header class="flex items-baseline justify-between mb-6">
+        <h2 class="text-2xl md:text-3xl font-bold">
+          <span class="font-mono text-signal text-xs md:text-sm align-middle">// </span>
+          The hosts
+        </h2>
+        <span class="font-mono text-xs opacity-50">
+          {hostCount} {hostCount === 1 ? 'host' : 'hosts'}
+        </span>
+      </header>
+      <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {hosts.map(h => (
+          <li class="group flex gap-4 p-4 rounded border border-base-300 hover:border-signal transition-colors">
+            <div class="shrink-0">
+              {h.headshot_url ? (
+                <img src={h.headshot_url} alt=""
+                     class="w-16 h-16 rounded-full object-cover border border-base-300" />
+              ) : (
+                <div class="w-16 h-16 rounded-full bg-base-200 border border-base-300 flex items-center justify-center text-2xl font-mono opacity-60">
+                  {initials(h)}
+                </div>
+              )}
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2">
+                <span class="font-bold truncate">{hostName(h)}</span>
+                {h.episode_count > 0 && (
+                  <span class="font-mono text-xs opacity-50 shrink-0">{h.episode_count} ep</span>
+                )}
+              </div>
+              {h.tagline && (
+                <p class="text-xs opacity-70 mt-0.5 line-clamp-1">{h.tagline}</p>
+              )}
+              {h.bio && (
+                <p class="text-sm opacity-80 mt-2 line-clamp-3 leading-snug">{h.bio}</p>
+              )}
+              {h.link && (
+                <a href={h.link} target="_blank" rel="noopener noreferrer"
+                   class="inline-block mt-2 text-xs font-mono text-signal hover:underline truncate max-w-full">
+                  ↗ {h.link.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                </a>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )}
+
+  {/* ─── Up next ─────────────────────────────────────────────────────── */}
+  {upcoming.length > 0 && (
+    <section class="py-12 md:py-16 border-t border-base-300">
+      <header class="flex items-baseline justify-between mb-6">
+        <h2 class="text-2xl md:text-3xl font-bold">
+          <span class="font-mono text-signal text-xs md:text-sm align-middle">// </span>
+          Up next
+        </h2>
+        <span class="font-mono text-xs opacity-50">{slate.timezone}</span>
+      </header>
+      <ul class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {upcoming.map(s => {
+          const date = new Date(s.start_time * 1000);
+          const dateStr = fmtUpcoming.format(date);
+          const timeStr = fmtUpcomingTime.format(date);
+          const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
+          return (
+            <li>
+              <a href={`/${slate.slug}/slot/${s.id}`}
+                 class="block p-5 rounded border border-base-300 hover:border-signal transition-colors h-full">
+                <div class="flex items-baseline justify-between font-mono text-xs">
+                  <span class="text-signal">{dateStr}</span>
+                  <span class="opacity-60">{timeStr}</span>
+                </div>
+                <div class="mt-3 font-semibold leading-snug line-clamp-3">
+                  {s.title ?? <span class="opacity-50 italic font-normal">No topic yet</span>}
+                </div>
+                {hostLabel && (
+                  <div class="mt-3 flex items-center gap-2 text-xs">
+                    {s.host_headshot_url ? (
+                      <img src={s.host_headshot_url} alt="" class="w-5 h-5 rounded-full object-cover" />
+                    ) : (
+                      <span class="w-5 h-5 rounded-full bg-base-200 border border-base-300 flex items-center justify-center font-mono text-[10px] opacity-60">
+                        {hostLabel.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                    <span class="opacity-70 truncate">{hostLabel}</span>
+                  </div>
+                )}
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  )}
+
+  {/* ─── In the pool ─────────────────────────────────────────────────── */}
+  {topTopics.length > 0 && (
+    <section id="topics" class="py-12 md:py-16 border-t border-base-300">
+      <header class="flex items-baseline justify-between mb-6">
+        <h2 class="text-2xl md:text-3xl font-bold">
+          <span class="font-mono text-signal text-xs md:text-sm align-middle">// </span>
+          In the pool
+        </h2>
+        <a href={`/${slate.slug}/topics`} class="text-sm opacity-70 hover:text-signal hover:opacity-100">
+          See all →
+        </a>
+      </header>
+      <ol class="space-y-1 max-w-3xl">
+        {topTopics.map((t, i) => (
+          <li class="flex items-baseline gap-4 py-3 border-b border-base-300/50 last:border-b-0">
+            <span class="font-mono text-xs opacity-40 w-6 shrink-0 tabular-nums">
+              {String(i + 1).padStart(2, '0')}
+            </span>
+            <span class="font-mono text-sm text-signal w-12 shrink-0 tabular-nums">
+              ★ {t.upvote_count}
+            </span>
+            <span class="flex-1 truncate">{t.title}</span>
+          </li>
+        ))}
+      </ol>
+      <p class="mt-6 text-sm opacity-70">
+        {isSignedIn ? (
+          <>
+            <a href={`/${slate.slug}/join`} class="link link-hover text-signal">Join as a Member</a> to vote and post your own.
+          </>
+        ) : (
+          <>
+            <a href={signInHref} class="link link-hover text-signal">Sign in</a> to vote on these or post your own.
+          </>
+        )}
+      </p>
+    </section>
+  )}
+
+  {/* ─── Past episodes ───────────────────────────────────────────────── */}
+  {pastEpisodes.length > 0 && (
+    <section class="py-12 md:py-16 border-t border-base-300">
+      <header class="flex items-baseline justify-between mb-6">
+        <h2 class="text-2xl md:text-3xl font-bold">
+          <span class="font-mono text-signal text-xs md:text-sm align-middle">// </span>
+          Past episodes
+        </h2>
+        <span class="font-mono text-xs opacity-50">
+          {episodeCount} {episodeCount === 1 ? 'episode' : 'episodes'}
+        </span>
+      </header>
+      <ul class="divide-y divide-base-300/50 max-w-3xl">
+        {pastEpisodes.map(e => {
+          const dateStr = fmtPast.format(new Date(e.start_time * 1000));
+          const hostLabel = e.host_email ? hostNameOrFallback(e.host_display_name, e.host_email) : null;
+          return (
+            <li>
+              <a href={`/${slate.slug}/slot/${e.id}`}
+                 class="block py-3 hover:bg-base-200/40 -mx-2 px-2 rounded transition-colors">
+                <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span class="font-mono text-xs opacity-60 w-24 shrink-0 tabular-nums">{dateStr}</span>
+                  <span class="font-medium flex-1 min-w-0 truncate">
+                    {e.title ?? <span class="opacity-50 italic font-normal">Untitled</span>}
+                  </span>
+                  {hostLabel && (
+                    <span class="font-mono text-xs opacity-60 shrink-0">{hostLabel}</span>
+                  )}
+                </div>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  )}
+
+  {/* ─── Empty state if nothing yet ──────────────────────────────────── */}
+  {hosts.length === 0 && upcoming.length === 0 && topTopics.length === 0 && pastEpisodes.length === 0 && (
+    <section class="py-20 text-center max-w-2xl mx-auto">
+      <p class="font-mono text-sm text-signal mb-2">// new slate</p>
+      <h2 class="text-2xl font-bold">Nothing here yet.</h2>
+      <p class="mt-3 opacity-70">
+        Hosts haven't been promoted, no topics in the pool, no episodes scheduled.
+        Check back soon, or <a href={primaryCtaHref} class="link link-hover text-signal">{primaryCtaLabel.toLowerCase()}</a>.
+      </p>
+    </section>
+  )}
+
+  {/* ─── Closing CTA ─────────────────────────────────────────────────── */}
+  {(hosts.length > 0 || upcoming.length > 0 || topTopics.length > 0 || pastEpisodes.length > 0) && (
+    <section class="py-16 border-t border-base-300 text-center">
+      <p class="font-mono text-xs text-signal mb-2">// join the show</p>
+      <p class="text-lg md:text-xl font-bold max-w-xl mx-auto leading-snug">
+        Members suggest topics. Everyone upvotes. Hosts pick what to record.
+      </p>
+      <a href={primaryCtaHref} class="btn btn-primary mt-6">{primaryCtaLabel}</a>
+    </section>
+  )}
+</article>

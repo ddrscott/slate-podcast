@@ -4,6 +4,7 @@ import ScheduleTopicPanel from '@/components/ScheduleTopicPanel.astro';
 import TopicDetailPanel from '@/components/TopicDetailPanel.astro';
 import TopicCard from '@/components/TopicCard.astro';
 import SlateSidebar from '@/components/SlateSidebar.astro';
+import SlateMarquee from '@/components/SlateMarquee.astro';
 import { getDb, getEnv } from '@/lib/db';
 import { isAppAdmin, signInUrl } from '@/lib/auth';
 
@@ -14,96 +15,180 @@ if (!slug) return new Response('Not found', { status: 404 });
 
 const db = getDb(Astro);
 const slate = await db.prepare(
-  `SELECT id, slug, name, description, timezone, is_public FROM slates WHERE slug = ?`,
-).bind(slug).first<{ id: string; slug: string; name: string; description: string | null; timezone: string; is_public: number }>();
+  `SELECT id, slug, name, description, timezone, is_public, cover_image_url
+   FROM slates WHERE slug = ?`,
+).bind(slug).first<{
+  id: string; slug: string; name: string; description: string | null;
+  timezone: string; is_public: number; cover_image_url: string | null;
+}>();
 
 if (!slate) return new Response('Not found', { status: 404 });
 if (!slate.is_public) return new Response('Private slate', { status: 403 });
 
-// Slots window: roughly the next ~3 months from "today" (UTC) — covers
-// "current + next month" reliably across timezones, with a buffer for tz drift.
-const nowSec = Math.floor(Date.now() / 1000);
-const horizonSec = nowSec + 95 * 86400;
-const slots = await db.prepare(
-  `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status,
-          COALESCE(sl.custom_title, sug.title) AS title,
-          u.email AS host_email
-   FROM slots sl
-   LEFT JOIN topics sug ON sug.id = sl.topic_id
-   LEFT JOIN users u ON u.id = sl.host_id
-   WHERE sl.slate_id = ? AND sl.status != 'cancelled'
-   AND sl.start_time >= ? AND sl.start_time < ?
-   ORDER BY sl.start_time`,
-).bind(slate.id, nowSec - 86400, horizonSec).all<{ id: string; start_time: number; duration_minutes: number; status: string; title: string | null; host_email: string | null }>();
-
-const slotsForGrid = slots.results.map(s => ({
-  id: s.id,
-  start_time: s.start_time,
-  duration_minutes: s.duration_minutes,
-  status: s.status as any,
-  theme: null,
-  title: s.title,
-}));
-
+// Viewer state — determines whether this is the public marquee view
+// (visitors and signed-in non-members) or the management view (members
+// and hosts). Members get the topic-list power-user UI; everyone else
+// gets the network-marquee landing.
 const user = Astro.locals.user;
 const member = user ? await db.prepare(
   `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
 ).bind(slate.id, user.id).first<{ role: string }>() : null;
 const isMember = !!member;
 const isHost = member?.role === 'host' || isAppAdmin(user?.scopes);
+const showManagement = isMember || isAppAdmin(user?.scopes);
 
-// Full pool of open + scheduled topics for the topics pane. Open first
-// so a host scanning for things to claim sees actionable rows above the
-// already-taken ones; within each status, by upvote count then recency.
-// Archived topics are accessible via the /topics archive view.
-const topics = await db.prepare(
-  `SELECT s.id, s.title, s.description, s.url, s.upvote_count, s.status,
-          s.scheduled_slot_id,
-          sl.start_time AS scheduled_start, sl.duration_minutes AS scheduled_duration,
-          sl.host_id AS scheduled_host_id,
-          spk.email AS scheduled_host_email,
-          spk.display_name AS scheduled_host_display_name,
-          (SELECT 1 FROM topic_votes v WHERE v.topic_id = s.id AND v.user_id = ?) AS has_voted
-   FROM topics s
-   LEFT JOIN slots sl ON sl.id = s.scheduled_slot_id
-   LEFT JOIN users spk ON spk.id = sl.host_id
-   WHERE s.slate_id = ? AND s.status IN ('open','scheduled')
-   ORDER BY (s.status = 'open') DESC, s.upvote_count DESC, s.submitted_at DESC`,
-).bind(user?.id ?? '', slate.id).all<{
-  id: string; title: string; description: string | null; url: string | null;
-  upvote_count: number; status: string; has_voted: number | null;
-  scheduled_slot_id: string | null;
-  scheduled_start: number | null; scheduled_duration: number | null;
-  scheduled_host_id: string | null;
-  scheduled_host_email: string | null;
-  scheduled_host_display_name: string | null;
-}>();
+const env = getEnv(Astro);
+const url = new URL(Astro.request.url);
+const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
 
-const openCount = topics.results.filter(s => s.status === 'open').length;
-const scheduledCount = topics.results.filter(s => s.status === 'scheduled').length;
-const totalCount = topics.results.length;
+// ─── Marquee data (non-members) ────────────────────────────────────────
+// Loaded only when the viewer doesn't have member access, so visitors
+// don't pay for the heavy management queries.
+const marqueeData = !showManagement ? await (async () => {
+  const [hosts, upcoming, topTopics, pastEpisodes] = await Promise.all([
+    db.prepare(
+      `SELECT u.id, u.display_name, u.email, u.headshot_url, u.tagline, u.bio, u.link,
+              COUNT(DISTINCT CASE
+                WHEN sl.start_time < unixepoch() AND sl.status IN ('recorded','published')
+                THEN sl.id END) AS episode_count
+       FROM slate_members sm
+       JOIN users u ON u.id = sm.user_id
+       LEFT JOIN slots sl ON sl.host_id = u.id AND sl.slate_id = sm.slate_id
+       WHERE sm.slate_id = ? AND sm.role = 'host'
+       GROUP BY u.id
+       ORDER BY episode_count DESC, COALESCE(u.display_name, u.email)`,
+    ).bind(slate.id).all<{
+      id: string; display_name: string | null; email: string;
+      headshot_url: string | null; tagline: string | null;
+      bio: string | null; link: string | null; episode_count: number;
+    }>(),
+    db.prepare(
+      `SELECT sl.id, sl.start_time,
+              COALESCE(sl.custom_title, sug.title) AS title,
+              u.display_name AS host_display_name,
+              u.email        AS host_email,
+              u.headshot_url AS host_headshot_url
+       FROM slots sl
+       LEFT JOIN topics sug ON sug.id = sl.topic_id
+       LEFT JOIN users u ON u.id = sl.host_id
+       WHERE sl.slate_id = ? AND sl.start_time >= unixepoch()
+         AND sl.status NOT IN ('cancelled')
+       ORDER BY sl.start_time LIMIT 6`,
+    ).bind(slate.id).all<{
+      id: string; start_time: number; title: string | null;
+      host_display_name: string | null; host_email: string | null;
+      host_headshot_url: string | null;
+    }>(),
+    db.prepare(
+      `SELECT id, title, upvote_count FROM topics
+       WHERE slate_id = ? AND status = 'open'
+       ORDER BY upvote_count DESC, submitted_at DESC LIMIT 5`,
+    ).bind(slate.id).all<{ id: string; title: string; upvote_count: number }>(),
+    db.prepare(
+      `SELECT sl.id, sl.start_time,
+              COALESCE(sl.custom_title, sug.title) AS title,
+              u.display_name AS host_display_name,
+              u.email        AS host_email
+       FROM slots sl
+       LEFT JOIN topics sug ON sug.id = sl.topic_id
+       LEFT JOIN users u ON u.id = sl.host_id
+       WHERE sl.slate_id = ? AND sl.start_time < unixepoch()
+         AND sl.status IN ('recorded','published')
+       ORDER BY sl.start_time DESC LIMIT 12`,
+    ).bind(slate.id).all<{
+      id: string; start_time: number; title: string | null;
+      host_display_name: string | null; host_email: string | null;
+    }>(),
+  ]);
+  return {
+    hosts: hosts.results,
+    upcoming: upcoming.results,
+    topTopics: topTopics.results,
+    pastEpisodes: pastEpisodes.results,
+  };
+})() : null;
+
+// ─── Management data (members/hosts) ───────────────────────────────────
+// Heavy queries — only run when the viewer is a member or App Admin.
+const managementData = showManagement ? await (async () => {
+  // Slots window: roughly the next ~3 months from "today" (UTC) — covers
+  // "current + next month" reliably across timezones, with a buffer for tz drift.
+  const nowSec = Math.floor(Date.now() / 1000);
+  const horizonSec = nowSec + 95 * 86400;
+  const slots = await db.prepare(
+    `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status,
+            COALESCE(sl.custom_title, sug.title) AS title,
+            u.email AS host_email
+     FROM slots sl
+     LEFT JOIN topics sug ON sug.id = sl.topic_id
+     LEFT JOIN users u ON u.id = sl.host_id
+     WHERE sl.slate_id = ? AND sl.status != 'cancelled'
+     AND sl.start_time >= ? AND sl.start_time < ?
+     ORDER BY sl.start_time`,
+  ).bind(slate.id, nowSec - 86400, horizonSec).all<{ id: string; start_time: number; duration_minutes: number; status: string; title: string | null; host_email: string | null }>();
+
+  // Full pool of open + scheduled topics for the topics pane. Open first
+  // so a host scanning for things to claim sees actionable rows above the
+  // already-taken ones; within each status, by upvote count then recency.
+  // Archived topics are accessible via the /topics archive view.
+  const topics = await db.prepare(
+    `SELECT s.id, s.title, s.description, s.url, s.upvote_count, s.status,
+            s.scheduled_slot_id,
+            sl.start_time AS scheduled_start, sl.duration_minutes AS scheduled_duration,
+            sl.host_id AS scheduled_host_id,
+            spk.email AS scheduled_host_email,
+            spk.display_name AS scheduled_host_display_name,
+            (SELECT 1 FROM topic_votes v WHERE v.topic_id = s.id AND v.user_id = ?) AS has_voted
+     FROM topics s
+     LEFT JOIN slots sl ON sl.id = s.scheduled_slot_id
+     LEFT JOIN users spk ON spk.id = sl.host_id
+     WHERE s.slate_id = ? AND s.status IN ('open','scheduled')
+     ORDER BY (s.status = 'open') DESC, s.upvote_count DESC, s.submitted_at DESC`,
+  ).bind(user?.id ?? '', slate.id).all<{
+    id: string; title: string; description: string | null; url: string | null;
+    upvote_count: number; status: string; has_voted: number | null;
+    scheduled_slot_id: string | null;
+    scheduled_start: number | null; scheduled_duration: number | null;
+    scheduled_host_id: string | null;
+    scheduled_host_email: string | null;
+    scheduled_host_display_name: string | null;
+  }>();
+
+  // Unread-activity count for the current user (only when they're a member).
+  let unreadActivity = 0;
+  if (user) {
+    const watermark = await db.prepare(
+      'SELECT watermark_at FROM activity_seen WHERE user_id = ? AND slate_id = ?',
+    ).bind(user.id, slate.id).first<{ watermark_at: number }>();
+    const wm = watermark?.watermark_at ?? 0;
+    const row = await db.prepare(
+      'SELECT COUNT(*) AS n FROM activity WHERE slate_id = ? AND created_at > ?',
+    ).bind(slate.id, wm).first<{ n: number }>();
+    unreadActivity = row?.n ?? 0;
+  }
+
+  return { slots, topics, unreadActivity };
+})() : null;
+
+const slotsForGrid = managementData?.slots.results.map(s => ({
+  id: s.id,
+  start_time: s.start_time,
+  duration_minutes: s.duration_minutes,
+  status: s.status as any,
+  theme: null,
+  title: s.title,
+})) ?? [];
+
+const topicsResults = managementData?.topics.results ?? [];
+const openCount = topicsResults.filter(s => s.status === 'open').length;
+const scheduledCount = topicsResults.filter(s => s.status === 'scheduled').length;
+const totalCount = topicsResults.length;
+const unreadActivity = managementData?.unreadActivity ?? 0;
 
 const fmtSched = new Intl.DateTimeFormat('en-US', {
   timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
   hour: 'numeric', minute: '2-digit',
 });
-
-// Unread-activity count for the current user (only when they're a member).
-let unreadActivity = 0;
-if (user && (isMember || isAppAdmin(user.scopes))) {
-  const watermark = await db.prepare(
-    'SELECT watermark_at FROM activity_seen WHERE user_id = ? AND slate_id = ?',
-  ).bind(user.id, slate.id).first<{ watermark_at: number }>();
-  const wm = watermark?.watermark_at ?? 0;
-  const row = await db.prepare(
-    'SELECT COUNT(*) AS n FROM activity WHERE slate_id = ? AND created_at > ?',
-  ).bind(slate.id, wm).first<{ n: number }>();
-  unreadActivity = row?.n ?? 0;
-}
-
-const env = getEnv(Astro);
-const url = new URL(Astro.request.url);
-const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
 ---
 
 <Layout
@@ -112,6 +197,20 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
   slate={{ name: slate.name, slug: slate.slug }}
   slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null, unreadActivity }}
 >
+  {marqueeData && (
+    <SlateMarquee
+      slate={slate}
+      hosts={marqueeData.hosts}
+      upcoming={marqueeData.upcoming}
+      topTopics={marqueeData.topTopics}
+      pastEpisodes={marqueeData.pastEpisodes}
+      signInHref={signInHref}
+      isSignedIn={!!user}
+    />
+  )}
+
+  {showManagement && (
+  <Fragment>
   <div class="lg:flex lg:gap-8 lg:items-start">
     {/* Sidebar (desktop only) — categories + mini calendar.
         On mobile the same sidebar lives in a drawer below. */}
@@ -142,11 +241,8 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
         {isMember && (
           <a href={`/${slate.slug}/topics/new`} class="btn btn-primary btn-sm shrink-0">+ Suggest a topic</a>
         )}
-        {user && !isMember && (
-          <button id="join-btn" class="btn btn-primary btn-sm shrink-0">Join as Member</button>
-        )}
-        {!user && (
-          <a href={signInHref} class="btn btn-primary btn-sm shrink-0">Sign in to suggest</a>
+        {user && !isMember && isAppAdmin(user.scopes) && (
+          <a href={`/${slate.slug}/topics/new`} class="btn btn-primary btn-sm shrink-0">+ Suggest a topic</a>
         )}
       </header>
 
@@ -154,17 +250,14 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
         <div class="rounded border border-base-300 bg-base-200/40 p-6 text-center">
           <p class="text-sm opacity-70">
             No topics yet.
-            {isMember
-              ? <> <a href={`/${slate.slug}/topics/new`} class="link">Be the first →</a></>
-              : !user
-                ? <> <a href={signInHref} class="link">Sign in</a> to add the first one.</>
-                : <> <a href={`/${slate.slug}/join`} class="link">Join as a Member</a> to add the first one.</>}
+            {(isMember || isAppAdmin(user?.scopes))
+              && <> <a href={`/${slate.slug}/topics/new`} class="link">Be the first →</a></>}
           </p>
         </div>
       ) : (
         <>
           <div id="topics-list" class="space-y-3">
-            {topics.results.map(s => (
+            {topicsResults.map(s => (
               <TopicCard
                 s={s}
                 isMember={isMember}
@@ -535,4 +628,6 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
     }
     bindCardClick(document);
   </script>
+  </Fragment>
+  )}
 </Layout>
