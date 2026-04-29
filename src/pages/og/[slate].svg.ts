@@ -20,21 +20,21 @@ export const GET: APIRoute = async (ctx) => {
   const counts = await db.prepare(
     `SELECT
        (SELECT COUNT(*) FROM slate_members WHERE slate_id = ?) AS members,
-       (SELECT COUNT(*) FROM suggestions   WHERE slate_id = ? AND status != 'archived') AS suggestions,
+       (SELECT COUNT(*) FROM topics   WHERE slate_id = ? AND status != 'archived') AS topics,
        (SELECT COUNT(*) FROM slots         WHERE slate_id = ? AND status = 'open') AS open_slots`,
-  ).bind(slate.id, slate.id, slate.id).first<{ members: number; suggestions: number; open_slots: number }>();
+  ).bind(slate.id, slate.id, slate.id).first<{ members: number; topics: number; open_slots: number }>();
 
   // Wrap title across at most 2 lines. ~18 chars/line at 78px.
   const titleLines = wrapTitle(slate.name, 18, 2);
   // Cap tagline at 2 lines so it never collides with the CTA, even when the
   // title is 2 lines tall. Wider per-line budget than title since font is smaller.
-  const tagline = (slate.description?.trim() || 'A community-driven podcast. Members suggest topics, Speakers pick what to record.');
+  const tagline = (slate.description?.trim() || 'A community-driven podcast. Members suggest topics, Hosts pick what to record.');
   const taglineLines = wrapText(tagline, 56, 2);
 
   const stats: string[] = [];
   if (counts) {
     if (counts.members) stats.push(`${counts.members} member${counts.members === 1 ? '' : 's'}`);
-    if (counts.suggestions) stats.push(`${counts.suggestions} suggestion${counts.suggestions === 1 ? '' : 's'}`);
+    if (counts.topics) stats.push(`${counts.topics} topic${counts.topics === 1 ? '' : 's'}`);
     if (counts.open_slots) stats.push(`${counts.open_slots} open slot${counts.open_slots === 1 ? '' : 's'}`);
   }
   const statsLine = stats.join(' · ');

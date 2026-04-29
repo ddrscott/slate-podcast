@@ -19,8 +19,8 @@ if (!slate) return new Response('Not found', { status: 404 });
 const member = await db.prepare(
   'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
 ).bind(slate.id, user.id).first<{ role: string }>();
-if (!isAppAdmin(user.scopes) && member?.role !== 'speaker') {
-  return new Response('Speaker required', { status: 403 });
+if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
+  return new Response('Host required', { status: 403 });
 }
 
 const rules = await db.prepare(

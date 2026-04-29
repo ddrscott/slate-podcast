@@ -1,8 +1,8 @@
 ---
 import Layout from '@/layouts/Layout.astro';
-import ScheduleSuggestionPanel from '@/components/ScheduleSuggestionPanel.astro';
-import SuggestionDetailPanel from '@/components/SuggestionDetailPanel.astro';
-import SuggestionCard from '@/components/SuggestionCard.astro';
+import ScheduleTopicPanel from '@/components/ScheduleTopicPanel.astro';
+import TopicDetailPanel from '@/components/TopicDetailPanel.astro';
+import TopicCard from '@/components/TopicCard.astro';
 import SlateSidebar from '@/components/SlateSidebar.astro';
 import { getDb, getEnv } from '@/lib/db';
 import { isAppAdmin, signInUrl } from '@/lib/auth';
@@ -27,14 +27,14 @@ const horizonSec = nowSec + 95 * 86400;
 const slots = await db.prepare(
   `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status,
           COALESCE(sl.custom_title, sug.title) AS title,
-          u.email AS speaker_email
+          u.email AS host_email
    FROM slots sl
-   LEFT JOIN suggestions sug ON sug.id = sl.suggestion_id
-   LEFT JOIN users u ON u.id = sl.speaker_id
+   LEFT JOIN topics sug ON sug.id = sl.topic_id
+   LEFT JOIN users u ON u.id = sl.host_id
    WHERE sl.slate_id = ? AND sl.status != 'cancelled'
    AND sl.start_time >= ? AND sl.start_time < ?
    ORDER BY sl.start_time`,
-).bind(slate.id, nowSec - 86400, horizonSec).all<{ id: string; start_time: number; duration_minutes: number; status: string; title: string | null; speaker_email: string | null }>();
+).bind(slate.id, nowSec - 86400, horizonSec).all<{ id: string; start_time: number; duration_minutes: number; status: string; title: string | null; host_email: string | null }>();
 
 const slotsForGrid = slots.results.map(s => ({
   id: s.id,
@@ -50,23 +50,23 @@ const member = user ? await db.prepare(
   `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
 ).bind(slate.id, user.id).first<{ role: string }>() : null;
 const isMember = !!member;
-const isSpeaker = member?.role === 'speaker' || isAppAdmin(user?.scopes);
+const isHost = member?.role === 'host' || isAppAdmin(user?.scopes);
 
-// Full pool of open + scheduled suggestions for the topics pane. Open first
-// so a speaker scanning for things to claim sees actionable rows above the
+// Full pool of open + scheduled topics for the topics pane. Open first
+// so a host scanning for things to claim sees actionable rows above the
 // already-taken ones; within each status, by upvote count then recency.
-// Archived suggestions are accessible via the /suggestions archive view.
-const suggestions = await db.prepare(
+// Archived topics are accessible via the /topics archive view.
+const topics = await db.prepare(
   `SELECT s.id, s.title, s.description, s.url, s.upvote_count, s.status,
           s.scheduled_slot_id,
           sl.start_time AS scheduled_start, sl.duration_minutes AS scheduled_duration,
-          sl.speaker_id AS scheduled_speaker_id,
-          spk.email AS scheduled_speaker_email,
-          spk.display_name AS scheduled_speaker_display_name,
-          (SELECT 1 FROM suggestion_votes v WHERE v.suggestion_id = s.id AND v.user_id = ?) AS has_voted
-   FROM suggestions s
+          sl.host_id AS scheduled_host_id,
+          spk.email AS scheduled_host_email,
+          spk.display_name AS scheduled_host_display_name,
+          (SELECT 1 FROM topic_votes v WHERE v.topic_id = s.id AND v.user_id = ?) AS has_voted
+   FROM topics s
    LEFT JOIN slots sl ON sl.id = s.scheduled_slot_id
-   LEFT JOIN users spk ON spk.id = sl.speaker_id
+   LEFT JOIN users spk ON spk.id = sl.host_id
    WHERE s.slate_id = ? AND s.status IN ('open','scheduled')
    ORDER BY (s.status = 'open') DESC, s.upvote_count DESC, s.submitted_at DESC`,
 ).bind(user?.id ?? '', slate.id).all<{
@@ -74,14 +74,14 @@ const suggestions = await db.prepare(
   upvote_count: number; status: string; has_voted: number | null;
   scheduled_slot_id: string | null;
   scheduled_start: number | null; scheduled_duration: number | null;
-  scheduled_speaker_id: string | null;
-  scheduled_speaker_email: string | null;
-  scheduled_speaker_display_name: string | null;
+  scheduled_host_id: string | null;
+  scheduled_host_email: string | null;
+  scheduled_host_display_name: string | null;
 }>();
 
-const openCount = suggestions.results.filter(s => s.status === 'open').length;
-const scheduledCount = suggestions.results.filter(s => s.status === 'scheduled').length;
-const totalCount = suggestions.results.length;
+const openCount = topics.results.filter(s => s.status === 'open').length;
+const scheduledCount = topics.results.filter(s => s.status === 'scheduled').length;
+const totalCount = topics.results.length;
 
 const fmtSched = new Intl.DateTimeFormat('en-US', {
   timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
@@ -110,7 +110,7 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
   title={`${slate.name} · slate.ljs.app`}
   description={slate.description ?? undefined}
   slate={{ name: slate.name, slug: slate.slug }}
-  slateContext={{ isMember, isSpeaker, role: member?.role as 'member' | 'speaker' | undefined ?? null, unreadActivity }}
+  slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null, unreadActivity }}
 >
   <div class="lg:flex lg:gap-8 lg:items-start">
     {/* Sidebar (desktop only) — categories + mini calendar.
@@ -140,7 +140,7 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
         <input id="topic-search" type="search" placeholder="Search topics…"
                class="input input-bordered input-sm flex-1 min-w-0" />
         {isMember && (
-          <a href={`/${slate.slug}/suggest`} class="btn btn-primary btn-sm shrink-0">+ Suggest a topic</a>
+          <a href={`/${slate.slug}/topics/new`} class="btn btn-primary btn-sm shrink-0">+ Suggest a topic</a>
         )}
         {user && !isMember && (
           <button id="join-btn" class="btn btn-primary btn-sm shrink-0">Join as Member</button>
@@ -155,7 +155,7 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
           <p class="text-sm opacity-70">
             No topics yet.
             {isMember
-              ? <> <a href={`/${slate.slug}/suggest`} class="link">Be the first →</a></>
+              ? <> <a href={`/${slate.slug}/topics/new`} class="link">Be the first →</a></>
               : !user
                 ? <> <a href={signInHref} class="link">Sign in</a> to add the first one.</>
                 : <> <a href={`/${slate.slug}/join`} class="link">Join as a Member</a> to add the first one.</>}
@@ -164,11 +164,11 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
       ) : (
         <>
           <div id="topics-list" class="space-y-3">
-            {suggestions.results.map(s => (
-              <SuggestionCard
+            {topics.results.map(s => (
+              <TopicCard
                 s={s}
                 isMember={isMember}
-                isSpeaker={isSpeaker}
+                isHost={isHost}
                 currentUserId={user?.id}
                 isAdmin={isAppAdmin(user?.scopes)}
                 fmtSched={fmtSched}
@@ -210,12 +210,12 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
     </aside>
   </div>
 
-  {isSpeaker && <ScheduleSuggestionPanel slate={{ id: slate.id, slug: slate.slug, name: slate.name }} />}
+  {isHost && <ScheduleTopicPanel slate={{ id: slate.id, slug: slate.slug, name: slate.name }} />}
 
-  <SuggestionDetailPanel
+  <TopicDetailPanel
     slate={{ id: slate.id, slug: slate.slug, name: slate.name, timezone: slate.timezone }}
     isMember={isMember}
-    isSpeaker={isSpeaker}
+    isHost={isHost}
     isAdmin={isAppAdmin(user?.scopes)}
     currentUserId={user?.id}
   />
@@ -223,7 +223,7 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
   <script is:inline define:vars={{
     slateId: slate.id,
     slateTimezone: slate.timezone,
-    isSpeaker,
+    isHost,
   }}>
     // ─── Helpers ─────────────────────────────────────────────────────────
     function escapeHtml(s) {
@@ -283,8 +283,8 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
       if (!topicsList) return;
       const q = (searchInput?.value ?? '').trim().toLowerCase();
       let visible = 0;
-      topicsList.querySelectorAll('[data-suggestion-card]').forEach(card => {
-        const status = card.dataset.suggestionStatus;
+      topicsList.querySelectorAll('[data-topic-card]').forEach(card => {
+        const status = card.dataset.topicStatus;
         const matchesFilter = activeFilter === 'all' || activeFilter === status;
         const matchesSearch = !q || (card.textContent || '').toLowerCase().includes(q);
         const show = matchesFilter && matchesSearch;
@@ -311,9 +311,9 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
     function refreshCounts() {
       if (!topicsList) return;
       let open = 0, scheduled = 0;
-      topicsList.querySelectorAll('[data-suggestion-card]').forEach(c => {
-        if (c.dataset.suggestionStatus === 'open') open++;
-        else if (c.dataset.suggestionStatus === 'scheduled') scheduled++;
+      topicsList.querySelectorAll('[data-topic-card]').forEach(c => {
+        if (c.dataset.topicStatus === 'open') open++;
+        else if (c.dataset.topicStatus === 'scheduled') scheduled++;
       });
       const total = open + scheduled;
       const setAll = (sel, txt) => {
@@ -329,11 +329,11 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
 
     // ─── Card transitions (driven by panel / unschedule events) ──────────
     function transitionCardToScheduled(detail) {
-      const { suggestionId, slotId, startTime, speakerEmail, speakerName } = detail;
-      const card = document.querySelector(`[data-suggestion-card="${suggestionId}"]`);
+      const { topicId, slotId, startTime, hostEmail, hostName } = detail;
+      const card = document.querySelector(`[data-topic-card="${topicId}"]`);
       if (!card) return;
 
-      card.dataset.suggestionStatus = 'scheduled';
+      card.dataset.topicStatus = 'scheduled';
       card.classList.remove('bg-base-100');
       card.classList.add('bg-base-200/40');
 
@@ -352,10 +352,10 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
         (desc ?? title)?.after(meta);
       }
       const dateStr = startTime ? fmtSched.format(new Date(startTime * 1000)) : '';
-      const speakerLabel = speakerName || (speakerEmail ? speakerEmail.split('@')[0] : '');
+      const hostLabel = hostName || (hostEmail ? hostEmail.split('@')[0] : '');
       meta.innerHTML =
         (dateStr ? `<span>${escapeHtml(dateStr)}</span>` : '') +
-        (speakerLabel ? `<span class="opacity-80">→ ${escapeHtml(speakerLabel)}</span>` : '');
+        (hostLabel ? `<span class="opacity-80">→ ${escapeHtml(hostLabel)}</span>` : '');
 
       let actions = content.querySelector('[data-card-actions]');
       if (!actions) {
@@ -364,12 +364,12 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
         actions.className = 'mt-3 flex items-center gap-3';
         content.appendChild(actions);
       }
-      const titleText = card.dataset.suggestionTitle ?? '';
+      const titleText = card.dataset.topicTitle ?? '';
       actions.innerHTML = `
         <button type="button"
                 class="unschedule-trigger text-xs opacity-60 hover:opacity-100 hover:text-error transition-colors px-2 py-1 -mx-2"
                 data-slot-id="${escapeHtml(slotId)}"
-                data-suggestion-title="${escapeHtml(titleText)}">
+                data-topic-title="${escapeHtml(titleText)}">
           Unschedule
         </button>
       `;
@@ -380,11 +380,11 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
     }
 
     function transitionCardToOpen(detail) {
-      const { suggestionId } = detail;
-      const card = document.querySelector(`[data-suggestion-card="${suggestionId}"]`);
+      const { topicId } = detail;
+      const card = document.querySelector(`[data-topic-card="${topicId}"]`);
       if (!card) return;
 
-      card.dataset.suggestionStatus = 'open';
+      card.dataset.topicStatus = 'open';
       card.classList.remove('bg-base-200/40');
       card.classList.add('bg-base-100');
 
@@ -396,19 +396,19 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
       content.querySelector('[data-card-meta]')?.remove();
 
       let actions = content.querySelector('[data-card-actions]');
-      if (isSpeaker) {
+      if (isHost) {
         if (!actions) {
           actions = document.createElement('div');
           actions.setAttribute('data-card-actions', '');
           actions.className = 'mt-3 flex items-center gap-3';
           content.appendChild(actions);
         }
-        const titleText = card.dataset.suggestionTitle ?? '';
+        const titleText = card.dataset.topicTitle ?? '';
         actions.innerHTML = `
           <button type="button"
                   class="schedule-trigger btn btn-sm btn-primary"
-                  data-suggestion-id="${escapeHtml(suggestionId)}"
-                  data-suggestion-title="${escapeHtml(titleText)}">
+                  data-topic-id="${escapeHtml(topicId)}"
+                  data-topic-title="${escapeHtml(titleText)}">
             Claim &amp; schedule
           </button>
         `;
@@ -421,8 +421,8 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
       refreshCounts();
     }
 
-    window.addEventListener('suggestion-scheduled', (e) => transitionCardToScheduled(e.detail ?? {}));
-    window.addEventListener('suggestion-unscheduled', (e) => transitionCardToOpen(e.detail ?? {}));
+    window.addEventListener('topic-scheduled', (e) => transitionCardToScheduled(e.detail ?? {}));
+    window.addEventListener('topic-unscheduled', (e) => transitionCardToOpen(e.detail ?? {}));
 
     // ─── Join, upvote, schedule, unschedule ──────────────────────────────
     const joinBtn = document.getElementById('join-btn');
@@ -440,7 +440,7 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
         b.addEventListener('click', async (e) => {
           e.stopPropagation();
           b.disabled = true;
-          const res = await fetch(`/api/suggestions/${b.dataset.id}/vote`, { method: 'POST' });
+          const res = await fetch(`/api/topics/${b.dataset.id}/vote`, { method: 'POST' });
           if (res.ok) {
             const body = await res.json();
             const voted = !!body.has_voted;
@@ -452,7 +452,7 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
             count.classList.toggle('font-bold', voted);
             count.classList.toggle('opacity-70', !voted);
             count.textContent = body.upvote_count;
-            const card = b.closest('[data-suggestion-card]');
+            const card = b.closest('[data-topic-card]');
             card?.classList.toggle('border-signal', voted);
             card?.classList.toggle('border-base-300', !voted);
           } else {
@@ -468,10 +468,10 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
         b.dataset.bound = '1';
         b.addEventListener('click', (e) => {
           e.stopPropagation();
-          window.dispatchEvent(new CustomEvent('schedule-suggestion', {
+          window.dispatchEvent(new CustomEvent('schedule-topic', {
             detail: {
-              suggestionId: b.dataset.suggestionId,
-              suggestionTitle: b.dataset.suggestionTitle,
+              topicId: b.dataset.topicId,
+              topicTitle: b.dataset.topicTitle,
             },
           }));
         });
@@ -483,7 +483,7 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
         b.dataset.bound = '1';
         b.addEventListener('click', async (e) => {
           e.stopPropagation();
-          if (!confirm(`Unschedule "${b.dataset.suggestionTitle}"? The slot goes back to open.`)) return;
+          if (!confirm(`Unschedule "${b.dataset.topicTitle}"? The slot goes back to open.`)) return;
           b.disabled = true;
           const slotId = b.dataset.slotId;
           const res = await fetch(`/api/slots/${slotId}/claim-and-schedule`, { method: 'DELETE' });
@@ -494,9 +494,9 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
               detail: { slotId, status: 'open', title: null },
             }));
             // Topic pane: card flips back to open
-            if (body.freed_suggestion_id) {
-              window.dispatchEvent(new CustomEvent('suggestion-unscheduled', {
-                detail: { suggestionId: body.freed_suggestion_id },
+            if (body.freed_topic_id) {
+              window.dispatchEvent(new CustomEvent('topic-unscheduled', {
+                detail: { topicId: body.freed_topic_id },
               }));
             }
           } else {
@@ -512,12 +512,12 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
 
     // ─── Open detail panel on card click (anywhere not a button/link) ────
     function openDetail(card) {
-      window.dispatchEvent(new CustomEvent('view-suggestion', {
-        detail: { suggestionId: card.dataset.suggestionCard },
+      window.dispatchEvent(new CustomEvent('view-topic', {
+        detail: { topicId: card.dataset.topicCard },
       }));
     }
     function bindCardClick(root) {
-      root.querySelectorAll('[data-suggestion-card]').forEach(card => {
+      root.querySelectorAll('[data-topic-card]').forEach(card => {
         if (card.dataset.cardBound) return;
         card.dataset.cardBound = '1';
         card.addEventListener('click', (e) => {

@@ -1,20 +1,20 @@
 import type { APIRoute } from 'astro';
 import { getDb } from '@/lib/db';
-import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate, requireUser } from '@/lib/access';
+import { HttpError, jsonError, jsonOk, requireHostOnSlate, requireUser } from '@/lib/access';
 import { Enqueue } from '@/lib/activity';
 
 export const prerender = false;
 
-// Speaker-only suggestion moderation. Edits status (open/archived) or content.
+// Host-only topic moderation. Edits status (open/archived) or content.
 export const PATCH: APIRoute = async (ctx) => {
   try {
     const caller = requireUser(ctx);
     const id = ctx.params.id!;
     const db = getDb(ctx);
-    const sug = await db.prepare('SELECT slate_id, status FROM suggestions WHERE id = ?').bind(id)
+    const sug = await db.prepare('SELECT slate_id, status FROM topics WHERE id = ?').bind(id)
       .first<{ slate_id: string; status: string }>();
     if (!sug) throw new HttpError(404, 'not_found');
-    await requireSpeakerOnSlate(ctx, sug.slate_id);
+    await requireHostOnSlate(ctx, sug.slate_id);
 
     const body = await ctx.request.json() as { status?: string; tags?: string; title?: string; description?: string };
     const fields: string[] = [];
@@ -30,12 +30,12 @@ export const PATCH: APIRoute = async (ctx) => {
 
     if (fields.length === 0) throw new HttpError(400, 'nothing_to_update');
     values.push(id);
-    await db.prepare(`UPDATE suggestions SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run();
+    await db.prepare(`UPDATE topics SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run();
 
     // Archiving is a notable moderation event — log it.
     if (body.status === 'archived' && sug.status !== 'archived') {
-      await Enqueue.suggestionArchived(ctx, {
-        slateId: sug.slate_id, actorId: caller.id, suggestionId: id,
+      await Enqueue.topicArchived(ctx, {
+        slateId: sug.slate_id, actorId: caller.id, topicId: id,
       });
     }
 

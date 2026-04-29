@@ -34,9 +34,9 @@ Join table. A user has at most one role per slate.
 | Column | Notes |
 |---|---|
 | `(slate_id, user_id)` | Composite PK |
-| `role` | `'member'` or `'speaker'` |
+| `role` | `'member'` or `'host'` |
 | `joined_at` | Unix seconds |
-| `promoted_at`, `promoted_by` | Set when a Member becomes a Speaker |
+| `promoted_at`, `promoted_by` | Set when a Member becomes a Host |
 
 ## `slot_rules`
 
@@ -64,10 +64,10 @@ The atomic unit of the schedule.
 | `start_time` | **Unix seconds, UTC.** |
 | `duration_minutes` | INTEGER |
 | `status` | enum: `open` → `assigned` → `confirmed` → `recorded` → `published`, plus `cancelled` |
-| `speaker_id` | FK → `users.id`. Set on claim. Any Speaker can overwrite. |
-| `suggestion_id` | FK → `suggestions.id`. Set on schedule. |
-| `custom_title` | If set, used instead of the suggestion's title |
-| `notes_internal` | Speaker-only scratchpad |
+| `host_id` | FK → `users.id`. Set on claim. Any Host can overwrite. |
+| `topic_id` | FK → `topics.id`. Set on schedule. |
+| `custom_title` | If set, used instead of the topic's title |
+| `notes_internal` | Host-only scratchpad |
 | `show_notes` | Markdown |
 | `show_notes_published_at` | NULL until publish |
 | `promo_image_url` | Public R2 URL |
@@ -95,9 +95,9 @@ Attachments rendered alongside show notes.
 | `url`, `title` | Display |
 | `sort_order` | INTEGER, ascending |
 
-## `suggestions`
+## `topics`
 
-Episode pitches. Posted by Members and Speakers.
+Episode pitches. Posted by Members and Hosts.
 
 | Column | Notes |
 |---|---|
@@ -107,12 +107,12 @@ Episode pitches. Posted by Members and Speakers.
 | `status` | `'open' \| 'scheduled' \| 'archived'` |
 | `fingerprint` | Normalized title for dedupe (lowercase, alphanum-only, single-spaced) |
 | `upvote_count` | Denormalized; kept in sync at write time |
-| `scheduled_slot_id` | FK → `slots.id`. Set when a Speaker schedules it. |
+| `scheduled_slot_id` | FK → `slots.id`. Set when a Host schedules it. |
 | `scheduled_at`, `scheduled_by` | Audit |
 
-## `suggestion_votes`
+## `topic_votes`
 
-| `(suggestion_id, user_id)` PK | One vote per user per suggestion |
+| `(topic_id, user_id)` PK | One vote per user per topic |
 
 ## `activity`
 
@@ -120,9 +120,9 @@ Per-slate event stream. Append-only.
 
 | Column | Notes |
 |---|---|
-| `kind` | `member_joined`, `speaker_promoted`, `speaker_demoted`, `suggestion_posted`, `suggestion_archived`, `slot_scheduled`, `slot_unscheduled`, `notes_published`, `slate_renamed` |
+| `kind` | `member_joined`, `host_promoted`, `host_demoted`, `topic_posted`, `topic_archived`, `slot_scheduled`, `slot_unscheduled`, `notes_published`, `slate_renamed` |
 | `actor_id` | Who did it |
-| `suggestion_id`, `slot_id`, `target_user_id` | Optional FKs to subjects |
+| `topic_id`, `slot_id`, `target_user_id` | Optional FKs to subjects |
 | `meta` | JSON blob, free-form per kind |
 
 Writes are best-effort (a failed log doesn't block the underlying mutation).

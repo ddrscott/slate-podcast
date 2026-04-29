@@ -20,7 +20,7 @@ const slots = await db.prepare(
   `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status,
           COALESCE(sl.custom_title, sug.title) AS title
    FROM slots sl
-   LEFT JOIN suggestions sug ON sug.id = sl.suggestion_id
+   LEFT JOIN topics sug ON sug.id = sl.topic_id
    WHERE sl.slate_id = ? AND sl.start_time >= ? AND sl.start_time < ?
    AND sl.status != 'cancelled' ORDER BY sl.start_time`,
 ).bind(slate.id, dayStartGuess - 36 * 3600, dayStartGuess + 36 * 3600).all<{ id: string; start_time: number; duration_minutes: number; status: string; title: string | null }>();

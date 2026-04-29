@@ -39,7 +39,7 @@ VALUES (..., 'monthly', '-1fri', '09:00', 30, '2026-01-01');
 1. Loads all active rules for the slate.
 2. For each, calls `expandRule(rule, slate.timezone, horizon)` → `ExpandedSlot[]`.
 3. `INSERT OR IGNORE INTO slots (slate_id, start_time, ...)` — `UNIQUE(slate_id, start_time)` makes this idempotent.
-4. Existing slots (any status) are untouched. The engine never overwrites status, speaker, or notes.
+4. Existing slots (any status) are untouched. The engine never overwrites status, host, or notes.
 
 Default horizon: 1 year from now. Configurable per call.
 

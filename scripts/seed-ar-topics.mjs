@@ -1,4 +1,4 @@
-// Seed 20 episode suggestions into the live Abolitionist Rising Daily slate.
+// Seed 20 episode topics into the live Abolitionist Rising Daily slate.
 // Uses the same JWT_SECRET as auth.ljs.app to mint a session token for Scott
 // (whose auth.ljs.app userId already lives in the production users table from
 // his earlier sign-ins). App-Admins bypass slate membership checks, so this
@@ -37,7 +37,7 @@ async function generateToken() {
 const SUGGESTIONS = [
   {
     title: 'The Norman Statement, Article by Article',
-    description: 'A walking tour through the eleven articles that define the movement. Each speaker takes one article, unpacks the affirmation, denial, and proof texts, and grounds it in plain language for someone hearing it for the first time. Anchor series for new listeners.',
+    description: 'A walking tour through the eleven articles that define the movement. Each host takes one article, unpacks the affirmation, denial, and proof texts, and grounds it in plain language for someone hearing it for the first time. Anchor series for new listeners.',
     tags: 'foundations, doctrine, series',
   },
   {
@@ -77,7 +77,7 @@ const SUGGESTIONS = [
   },
   {
     title: 'What If Abolition Polls Badly?',
-    description: 'Article II\'s denial — "we deny that public polling or the political winds should dictate what Christians say and do." Useful when an abolitionist bill polls poorly and speakers feel the pressure to soften the message.',
+    description: 'Article II\'s denial — "we deny that public polling or the political winds should dictate what Christians say and do." Useful when an abolitionist bill polls poorly and hosts feel the pressure to soften the message.',
     tags: 'pragmatism, strategy',
   },
   {
@@ -117,7 +117,7 @@ const SUGGESTIONS = [
   },
   {
     title: 'At the Abortion Mill',
-    description: 'What direct action looks like at the killing place. Sidewalk counseling, the "rescue" tradition (and the law that punished it), legal risk in 2026, and where each of our speakers personally draws the line. Proverbs 24:11 in practice.',
+    description: 'What direct action looks like at the killing place. Sidewalk counseling, the "rescue" tradition (and the law that punished it), legal risk in 2026, and where each of our hosts personally draws the line. Proverbs 24:11 in practice.',
     tags: 'direct-action, sidewalk, rescue',
   },
   {
@@ -149,10 +149,10 @@ async function main() {
   if (!cookie) throw new Error(`auth callback failed: ${cbRes.status}`);
   console.log(`session cookie: ${cookie.slice(0, 40)}...`);
 
-  console.log(`\nSeeding ${SUGGESTIONS.length} suggestions to ${SLATE_ID}...\n`);
+  console.log(`\nSeeding ${SUGGESTIONS.length} topics to ${SLATE_ID}...\n`);
   let ok = 0, dup = 0, fail = 0;
   for (const [i, s] of SUGGESTIONS.entries()) {
-    const res = await fetch(`${BASE}/api/slates/${SLATE_ID}/suggestions`, {
+    const res = await fetch(`${BASE}/api/slates/${SLATE_ID}/topics`, {
       method: 'POST',
       headers: { cookie, 'content-type': 'application/json' },
       body: JSON.stringify(s),

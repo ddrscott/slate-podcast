@@ -20,14 +20,14 @@ if (!slate || !slate.is_public) return new Response('Not found', { status: 404 }
 
 const slot = await db.prepare(
   `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status,
-          sl.speaker_id, sl.suggestion_id, sl.custom_title,
+          sl.host_id, sl.topic_id, sl.custom_title,
           sl.show_notes, sl.show_notes_published_at, sl.promo_image_url,
-          sug.title AS suggestion_title, sug.description AS suggestion_description,
-          spk.email AS speaker_email, spk.display_name AS speaker_display_name,
-          spk.headshot_url AS speaker_headshot_url
+          sug.title AS topic_title, sug.description AS topic_description,
+          spk.email AS host_email, spk.display_name AS host_display_name,
+          spk.headshot_url AS host_headshot_url
    FROM slots sl
-   LEFT JOIN suggestions sug ON sug.id = sl.suggestion_id
-   LEFT JOIN users spk ON spk.id = sl.speaker_id
+   LEFT JOIN topics sug ON sug.id = sl.topic_id
+   LEFT JOIN users spk ON spk.id = sl.host_id
    WHERE sl.id = ? AND sl.slate_id = ?`,
 ).bind(slotId, slate.id).first<any>();
 if (!slot) return new Response('Slot not found', { status: 404 });
@@ -46,29 +46,29 @@ const member = user ? await db.prepare(
   `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
 ).bind(slate.id, user.id).first<{ role: string }>() : null;
 
-const isSpeaker = (member?.role === 'speaker') || isAppAdmin(user?.scopes);
-const isSlotOwner = user && slot.speaker_id === user.id;
-const canEditNotes = isSlotOwner || isSpeaker;
-const canPublish = isSpeaker;
-const canEditPromo = isSlotOwner || isSpeaker;
+const isHost = (member?.role === 'host') || isAppAdmin(user?.scopes);
+const isSlotOwner = user && slot.host_id === user.id;
+const canEditNotes = isSlotOwner || isHost;
+const canPublish = isHost;
+const canEditPromo = isSlotOwner || isHost;
 const isPublished = !!slot.show_notes_published_at;
-const displayTitle = slot.custom_title ?? slot.suggestion_title ?? null;
+const displayTitle = slot.custom_title ?? slot.topic_title ?? null;
 
 // Per-slot OG meta. If a promo image is uploaded, point at it directly so
 // social platforms unfurl with that art. Otherwise fall back to the slate's
 // generated SVG card.
 const slotUrl = `${new URL(Astro.request.url).origin}/${slug}/slot/${slot.id}`;
 const ogTitle = displayTitle ? `${displayTitle} · ${slate.name}` : `${fmtDate.format(new Date(startMs))} · ${slate.name}`;
-const speakerName = slot.speaker_email
-  ? displayName({ display_name: slot.speaker_display_name, email: slot.speaker_email })
+const hostName = slot.host_email
+  ? displayName({ display_name: slot.host_display_name, email: slot.host_email })
   : null;
-const ogDesc = slot.suggestion_description
-  ?? `${fmtDate.format(new Date(startMs))} at ${fmtTime.format(new Date(startMs))} ${slate.timezone}${speakerName ? ` — with ${speakerName}` : ''}.`;
+const ogDesc = slot.topic_description
+  ?? `${fmtDate.format(new Date(startMs))} at ${fmtTime.format(new Date(startMs))} ${slate.timezone}${hostName ? ` — with ${hostName}` : ''}.`;
 const ogImg = slot.promo_image_url ?? undefined;
 
-// Available open suggestions (for the topic picker, when speaker)
-const availableSuggestions = isSpeaker ? await db.prepare(
-  `SELECT id, title, upvote_count FROM suggestions
+// Available open topics (for the topic picker, when host)
+const availableTopics = isHost ? await db.prepare(
+  `SELECT id, title, upvote_count FROM topics
    WHERE slate_id = ? AND status = 'open' ORDER BY upvote_count DESC LIMIT 20`,
 ).bind(slate.id).all<{ id: string; title: string; upvote_count: number }>() : { results: [] };
 ---
@@ -86,20 +86,20 @@ const availableSuggestions = isSpeaker ? await db.prepare(
       <span>{fmtTime.format(new Date(startMs))} – {fmtTime.format(new Date(endMs))} {slate.timezone}</span>
       <span class="opacity-50">·</span>
       <span class="badge badge-outline badge-sm">{slot.status}</span>
-      {slot.speaker_id && (
+      {slot.host_id && (
         <>
           <span class="opacity-50">·</span>
           <span class="flex items-center gap-1.5">
-            {slot.speaker_headshot_url
-              ? <img src={slot.speaker_headshot_url} alt="" class="w-5 h-5 rounded-full object-cover" />
-              : <span class="w-5 h-5 rounded-full bg-base-200 inline-flex items-center justify-center text-[10px] font-bold opacity-70">{(speakerName ?? '').charAt(0).toUpperCase()}</span>}
-            <span class="opacity-70">{speakerName}</span>
+            {slot.host_headshot_url
+              ? <img src={slot.host_headshot_url} alt="" class="w-5 h-5 rounded-full object-cover" />
+              : <span class="w-5 h-5 rounded-full bg-base-200 inline-flex items-center justify-center text-[10px] font-bold opacity-70">{(hostName ?? '').charAt(0).toUpperCase()}</span>}
+            <span class="opacity-70">{hostName}</span>
           </span>
         </>
       )}
     </p>
 
-    {/* Promo image (uploaded by speaker). Shown at the top of the page so the
+    {/* Promo image (uploaded by host). Shown at the top of the page so the
         slot URL self-promotes. Doubles as the social-share image. */}
     {slot.promo_image_url && (
       <div class="mt-6 rounded overflow-hidden border border-base-300">
@@ -121,12 +121,12 @@ const availableSuggestions = isSpeaker ? await db.prepare(
       <div class="mt-6 card bg-base-200 border border-base-300">
         <div class="card-body">
           <h2 class="card-title text-xl">{displayTitle}</h2>
-          {slot.suggestion_description && <p class="mt-2">{slot.suggestion_description}</p>}
+          {slot.topic_description && <p class="mt-2">{slot.topic_description}</p>}
         </div>
       </div>
     )}
 
-    {/* Promo image upload widget (speakers only) */}
+    {/* Promo image upload widget (hosts only) */}
     {canEditPromo && (
       <div class="mt-6 card bg-base-100 border border-base-300">
         <div class="card-body py-4">
@@ -149,43 +149,43 @@ const availableSuggestions = isSpeaker ? await db.prepare(
       </div>
     )}
 
-    {/* Speaker controls */}
-    {isSpeaker && (
+    {/* Host controls */}
+    {isHost && (
       <div class="mt-6 card bg-base-100 border border-signal">
         <div class="card-body">
-          <h2 class="card-title text-base">Speaker controls</h2>
+          <h2 class="card-title text-base">Host controls</h2>
           <div class="flex flex-wrap gap-2">
-            {!slot.speaker_id && (
+            {!slot.host_id && (
               <button id="claim-btn" class="btn btn-primary btn-sm">Claim this slot</button>
             )}
-            {slot.speaker_id && !isSlotOwner && (
-              <button id="sub-in-btn" class="btn btn-ghost btn-sm border border-base-300">Sub in for {speakerName}</button>
+            {slot.host_id && !isSlotOwner && (
+              <button id="sub-in-btn" class="btn btn-ghost btn-sm border border-base-300">Sub in for {hostName}</button>
             )}
             {isSlotOwner && (
               <button id="release-btn" class="btn btn-ghost btn-sm border border-base-300">Release the slot</button>
             )}
           </div>
 
-          {slot.speaker_id && (
+          {slot.host_id && (
             <div class="mt-4">
               <label class="label-text">Topic</label>
               <select id="topic-select" class="select select-bordered w-full max-w-xl mt-1">
                 <option value="">— No topic —</option>
-                {availableSuggestions.results.map(s => (
-                  <option value={s.id} selected={slot.suggestion_id === s.id}>
+                {availableTopics.results.map(s => (
+                  <option value={s.id} selected={slot.topic_id === s.id}>
                     ▲{s.upvote_count} · {s.title}
                   </option>
                 ))}
-                {slot.suggestion_id && !availableSuggestions.results.some(s => s.id === slot.suggestion_id) && (
-                  <option value={slot.suggestion_id} selected>{slot.suggestion_title} (current)</option>
+                {slot.topic_id && !availableTopics.results.some(s => s.id === slot.topic_id) && (
+                  <option value={slot.topic_id} selected>{slot.topic_title} (current)</option>
                 )}
               </select>
-              <input id="custom-title" class="input input-bordered w-full max-w-xl mt-2" placeholder="Custom title (optional, overrides suggestion title)" value={slot.custom_title ?? ''} maxlength="200" />
+              <input id="custom-title" class="input input-bordered w-full max-w-xl mt-2" placeholder="Custom title (optional, overrides topic title)" value={slot.custom_title ?? ''} maxlength="200" />
               <button id="topic-save" class="btn btn-primary btn-sm mt-2">Save topic</button>
             </div>
           )}
 
-          <p id="speaker-status" class="text-sm hidden"></p>
+          <p id="host-status" class="text-sm hidden"></p>
         </div>
       </div>
     )}
@@ -211,7 +211,7 @@ const availableSuggestions = isSpeaker ? await db.prepare(
       </section>
     )}
 
-    {/* Editor for slot owner / any speaker / app admin */}
+    {/* Editor for slot owner / any host / app admin */}
     {canEditNotes && (
       <section class="mt-8 card bg-base-100 border border-base-300">
         <div class="card-body">
@@ -241,7 +241,7 @@ const availableSuggestions = isSpeaker ? await db.prepare(
   </section>
 
   <script is:inline define:vars={{ slotId: slot.id }}>
-    const status = document.getElementById('speaker-status');
+    const status = document.getElementById('host-status');
     function setStatus(msg, kind) {
       if (!status) return;
       status.classList.remove('hidden', 'text-error', 'text-success');
@@ -251,21 +251,21 @@ const availableSuggestions = isSpeaker ? await db.prepare(
 
     document.getElementById('claim-btn')?.addEventListener('click', async () => {
       setStatus('Claiming…');
-      const res = await fetch(`/api/slots/${slotId}/assign-speaker`, { method: 'POST' });
+      const res = await fetch(`/api/slots/${slotId}/assign-host`, { method: 'POST' });
       if (res.ok) location.reload();
       else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
     });
     document.getElementById('sub-in-btn')?.addEventListener('click', async () => {
-      if (!confirm("Sub in for the current speaker on this slot?")) return;
+      if (!confirm("Sub in for the current host on this slot?")) return;
       setStatus('Subbing in…');
-      const res = await fetch(`/api/slots/${slotId}/assign-speaker`, { method: 'POST' });
+      const res = await fetch(`/api/slots/${slotId}/assign-host`, { method: 'POST' });
       if (res.ok) location.reload();
       else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
     });
     document.getElementById('release-btn')?.addEventListener('click', async () => {
       if (!confirm("Release this slot? It'll go back to open.")) return;
       setStatus('Releasing…');
-      const res = await fetch(`/api/slots/${slotId}/assign-speaker`, { method: 'DELETE' });
+      const res = await fetch(`/api/slots/${slotId}/assign-host`, { method: 'DELETE' });
       if (res.ok) location.reload();
       else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
     });
@@ -277,7 +277,7 @@ const availableSuggestions = isSpeaker ? await db.prepare(
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          suggestion_id: sel.value || null,
+          topic_id: sel.value || null,
           custom_title: custom.value || null,
         }),
       });

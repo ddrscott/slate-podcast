@@ -21,11 +21,11 @@ export interface SlotRow {
   custom_title: string | null;
   notes_internal: string | null;
   rule_id: string | null;
-  speaker_id: string | null;
-  speaker_email: string | null;
-  speaker_display_name: string | null;
-  suggestion_id: string | null;
-  suggestion_title: string | null;
+  host_id: string | null;
+  host_email: string | null;
+  host_display_name: string | null;
+  topic_id: string | null;
+  topic_title: string | null;
 }
 
 interface Props {
@@ -64,16 +64,16 @@ export default function SlotsAGGrid({ slateId, timezone, rows: initialRows }: Pr
         'opacity-50 line-through': p => p.value === 'cancelled',
       },
     },
-    { headerName: 'Speaker', width: 200, editable: false,
+    { headerName: 'Host', width: 200, editable: false,
       valueGetter: (p) => {
         const r = p.data;
-        if (!r?.speaker_email) return '';
-        if (r.speaker_display_name?.trim()) return r.speaker_display_name.trim();
-        const at = r.speaker_email.indexOf('@');
-        return at > 0 ? r.speaker_email.slice(0, at) : r.speaker_email;
+        if (!r?.host_email) return '';
+        if (r.host_display_name?.trim()) return r.host_display_name.trim();
+        const at = r.host_email.indexOf('@');
+        return at > 0 ? r.host_email.slice(0, at) : r.host_email;
       },
       cellStyle: { opacity: '0.85' } as Record<string, string> },
-    { headerName: 'Topic', field: 'suggestion_title', flex: 1, editable: false,
+    { headerName: 'Topic', field: 'topic_title', flex: 1, editable: false,
       cellStyle: { fontStyle: 'italic', opacity: '0.85' } as Record<string, string> },
     { headerName: 'Custom title', field: 'custom_title', flex: 1, editable: true,
       cellEditor: 'agLargeTextCellEditor',

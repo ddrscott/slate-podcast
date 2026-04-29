@@ -36,7 +36,7 @@ Now writes hit the local file. Production is untouched.
 
 ## 4. Seed (optional)
 
-You'll have an empty DB. To seed your auth.ljs.app user as an App-Admin slate, hand-write rows or adapt `scripts/seed-ar-suggestions.mjs`. There's no canonical local seed — most dev work uses prod data because the data model is simple and the user pool is small.
+You'll have an empty DB. To seed your auth.ljs.app user as an App-Admin slate, hand-write rows or adapt `scripts/seed-ar-topics.mjs`. There's no canonical local seed — most dev work uses prod data because the data model is simple and the user pool is small.
 
 ## Switching back
 

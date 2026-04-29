@@ -1,8 +1,8 @@
 // End-to-end smoke test for Slate v2.
 // Generates auth.ljs.app-format JWTs (HMAC-SHA256) using the dev JWT_SECRET
 // and walks through the entire flow: admin creates slate, members join,
-// suggestions, upvotes, dup detection, slot assignment, topic marrying,
-// boot another speaker, slug change, show notes publishing, reminders.
+// topics, upvotes, dup detection, slot assignment, topic marrying,
+// boot another host, slug change, show notes publishing, reminders.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -57,8 +57,8 @@ async function api(cookie, method, path, body) {
 // ── Setup ────────────────────────────────────────────────────────────────
 console.log('\n── Auth setup ──');
 const adminCookie = await signIn('admin@test', 'usr_admin', ['admin']);
-const speakerCookie = await signIn('jacob@test', 'usr_jacob', []);
-const speakerBCookie = await signIn('eric@test', 'usr_eric', []);
+const hostCookie = await signIn('jacob@test', 'usr_jacob', []);
+const hostBCookie = await signIn('eric@test', 'usr_eric', []);
 const memberACookie = await signIn('alice@test', 'usr_alice', []);
 const memberBCookie = await signIn('bob@test', 'usr_bob', []);
 ok('all five users signed in');
@@ -74,22 +74,22 @@ let r = await api(adminCookie, 'POST', '/api/slates', {
 r.body?.slate?.id ? ok('admin created slate') : bad('admin slate create', r);
 const slateId = r.body.slate.id;
 
-r = await api(speakerCookie, 'POST', '/api/slates', { name: 'Should Fail', slug: 'fail' });
+r = await api(hostCookie, 'POST', '/api/slates', { name: 'Should Fail', slug: 'fail' });
 r.status === 403 ? ok('non-admin slate create rejected (403)') : bad('non-admin should be 403', r);
 
-// ── 2. App Admin promotes Jacob + Eric to Speakers ──────────────────────
-console.log('\n── 2. Speaker promotions ──');
-r = await api(adminCookie, 'POST', `/api/slates/${slateId}/speakers`, { user_id: 'usr_jacob' });
-r.status < 300 ? ok('jacob promoted to speaker') : bad('promote jacob', r);
-r = await api(adminCookie, 'POST', `/api/slates/${slateId}/speakers`, { user_id: 'usr_eric' });
-r.status < 300 ? ok('eric promoted to speaker') : bad('promote eric', r);
+// ── 2. App Admin promotes Jacob + Eric to Hosts ──────────────────────
+console.log('\n── 2. Host promotions ──');
+r = await api(adminCookie, 'POST', `/api/slates/${slateId}/hosts`, { user_id: 'usr_jacob' });
+r.status < 300 ? ok('jacob promoted to host') : bad('promote jacob', r);
+r = await api(adminCookie, 'POST', `/api/slates/${slateId}/hosts`, { user_id: 'usr_eric' });
+r.status < 300 ? ok('eric promoted to host') : bad('promote eric', r);
 
-r = await api(speakerCookie, 'POST', `/api/slates/${slateId}/speakers`, { user_id: 'usr_alice' });
-r.status === 403 ? ok('speaker cannot promote (only admin can)') : bad('speaker promote should 403', r);
+r = await api(hostCookie, 'POST', `/api/slates/${slateId}/hosts`, { user_id: 'usr_alice' });
+r.status === 403 ? ok('host cannot promote (only admin can)') : bad('host promote should 403', r);
 
 // ── 3. Slot rule + regenerate ────────────────────────────────────────────
 console.log('\n── 3. Scheduling rules ──');
-r = await api(speakerCookie, 'POST', `/api/slates/${slateId}/admin/rules`, {
+r = await api(hostCookie, 'POST', `/api/slates/${slateId}/admin/rules`, {
   name: 'Bi-weekly Monday',
   cadence: 'weekly',
   days_of_week: 'mon',
@@ -100,7 +100,7 @@ r = await api(speakerCookie, 'POST', `/api/slates/${slateId}/admin/rules`, {
 });
 r.body?.rule?.id ? ok('rule created') : bad('rule create', r);
 
-r = await api(speakerCookie, 'POST', `/api/slates/${slateId}/admin/regenerate-slots`, {});
+r = await api(hostCookie, 'POST', `/api/slates/${slateId}/admin/regenerate-slots`, {});
 (r.body?.inserted >= 50) ? ok(`generated ${r.body.inserted} slots`) : bad('regenerate', r);
 
 // ── 4. Member signup (open) ──────────────────────────────────────────────
@@ -114,20 +114,20 @@ r = await api(memberBCookie, 'POST', `/api/slates/${slateId}/join`, {});
 r = await api(memberACookie, 'POST', `/api/slates/${slateId}/join`, {});
 (r.body?.already_member) ? ok('re-join is idempotent') : bad('re-join', r);
 
-// ── 5. Suggestion submission ────────────────────────────────────────────
-console.log('\n── 5. Suggestions ──');
-r = await api(memberACookie, 'POST', `/api/slates/${slateId}/suggestions`, {
+// ── 5. Topic submission ────────────────────────────────────────────
+console.log('\n── 5. Topics ──');
+r = await api(memberACookie, 'POST', `/api/slates/${slateId}/topics`, {
   title: 'Frederick Douglass on organizing',
   description: 'Primary source from his autobiography.',
   url: 'https://www.gutenberg.org/files/23/23-h/23-h.htm',
   tags: 'history,primary-source',
 });
-r.body?.suggestion?.id ? ok('alice posted suggestion') : bad('alice suggest', r);
-const sug1 = r.body.suggestion.id;
+r.body?.topic?.id ? ok('alice posted topic') : bad('alice suggest', r);
+const sug1 = r.body.topic.id;
 
 // ── 6. Duplicate detection ──────────────────────────────────────────────
 console.log('\n── 6. Duplicate detection ──');
-r = await api(memberBCookie, 'POST', `/api/slates/${slateId}/suggestions`, {
+r = await api(memberBCookie, 'POST', `/api/slates/${slateId}/topics`, {
   title: 'frederick douglass on organizing!!',
   description: 'Different person but same topic',
 });
@@ -136,55 +136,55 @@ r = await api(memberBCookie, 'POST', `/api/slates/${slateId}/suggestions`, {
   : bad('dup detection', r);
 
 // Force-submit anyway
-r = await api(memberBCookie, 'POST', `/api/slates/${slateId}/suggestions?force=1`, {
+r = await api(memberBCookie, 'POST', `/api/slates/${slateId}/topics?force=1`, {
   title: 'frederick douglass on organizing!!',
 });
-r.body?.suggestion?.id ? ok('force=1 submits the duplicate') : bad('force submit', r);
+r.body?.topic?.id ? ok('force=1 submits the duplicate') : bad('force submit', r);
 
 // ── 7. Upvotes ──────────────────────────────────────────────────────────
 console.log('\n── 7. Upvotes ──');
-r = await api(memberBCookie, 'POST', `/api/suggestions/${sug1}/vote`, {});
+r = await api(memberBCookie, 'POST', `/api/topics/${sug1}/vote`, {});
 (r.body?.has_voted && r.body.upvote_count === 1) ? ok('bob upvoted (count=1)') : bad('bob upvote', r);
-r = await api(memberACookie, 'POST', `/api/suggestions/${sug1}/vote`, {});
+r = await api(memberACookie, 'POST', `/api/topics/${sug1}/vote`, {});
 (r.body?.has_voted && r.body.upvote_count === 2) ? ok('alice upvoted (count=2)') : bad('alice upvote', r);
-r = await api(memberACookie, 'POST', `/api/suggestions/${sug1}/vote`, {});
+r = await api(memberACookie, 'POST', `/api/topics/${sug1}/vote`, {});
 (!r.body?.has_voted && r.body.upvote_count === 1) ? ok('alice toggled off (count=1)') : bad('alice toggle', r);
 
-// ── 8. Speaker claims a slot ────────────────────────────────────────────
+// ── 8. Host claims a slot ────────────────────────────────────────────
 console.log('\n── 8. Slot claim + topic ──');
-r = await api(speakerCookie, 'GET', `/api/slates/${slateId}/admin/rules`);
+r = await api(hostCookie, 'GET', `/api/slates/${slateId}/admin/rules`);
 // Get an open slot id
-const slotsCheck = await fetch(`${BASE}/${'ar'}`, { headers: { cookie: speakerCookie } });
-// Just query D1 indirectly via a dedicated read — use the suggestions endpoint as proxy or re-call internal
+const slotsCheck = await fetch(`${BASE}/${'ar'}`, { headers: { cookie: hostCookie } });
+// Just query D1 indirectly via a dedicated read — use the topics endpoint as proxy or re-call internal
 // Easier: call a SELECT on slots via a generic read endpoint we don't have. Use the export.csv.
-const csvRes = await fetch(`${BASE}/api/slates/${slateId}/admin/export.csv`, { headers: { cookie: speakerCookie } });
+const csvRes = await fetch(`${BASE}/api/slates/${slateId}/admin/export.csv`, { headers: { cookie: hostCookie } });
 const csvText = await csvRes.text();
 const firstSlotLine = csvText.split('\n').find(l => l.includes(',open,'));
 const slotId = firstSlotLine?.split(',')[0];
 slotId ? ok(`picked first open slot: ${slotId}`) : bad('pick slot', csvText.slice(0, 200));
 
 // Jacob claims it
-r = await api(speakerCookie, 'POST', `/api/slots/${slotId}/assign-speaker`, {});
-(r.body?.speaker_id === 'usr_jacob' && r.body.status === 'assigned')
+r = await api(hostCookie, 'POST', `/api/slots/${slotId}/assign-host`, {});
+(r.body?.host_id === 'usr_jacob' && r.body.status === 'assigned')
   ? ok('jacob claimed slot (status=assigned)')
   : bad('claim slot', r);
 
-// Marry suggestion to slot
-r = await api(speakerCookie, 'POST', `/api/slots/${slotId}/topic`, { suggestion_id: sug1 });
+// Marry topic to slot
+r = await api(hostCookie, 'POST', `/api/slots/${slotId}/topic`, { topic_id: sug1 });
 (r.body?.status === 'confirmed') ? ok('topic married → confirmed') : bad('topic', r);
 
-// ── 9. Boot another speaker ─────────────────────────────────────────────
-console.log('\n── 9. Speaker boot ──');
-r = await api(speakerBCookie, 'POST', `/api/slots/${slotId}/assign-speaker`, {});
-(r.body?.speaker_id === 'usr_eric') ? ok('eric booted jacob from the slot') : bad('boot', r);
+// ── 9. Boot another host ─────────────────────────────────────────────
+console.log('\n── 9. Host boot ──');
+r = await api(hostBCookie, 'POST', `/api/slots/${slotId}/assign-host`, {});
+(r.body?.host_id === 'usr_eric') ? ok('eric booted jacob from the slot') : bad('boot', r);
 
 // Member tries to claim → 403
-r = await api(memberACookie, 'POST', `/api/slots/${slotId}/assign-speaker`, {});
+r = await api(memberACookie, 'POST', `/api/slots/${slotId}/assign-host`, {});
 (r.status === 403) ? ok('member cannot claim a slot (403)') : bad('member claim should 403', r);
 
 // ── 10. Slug change + 404 of old URL ────────────────────────────────────
 console.log('\n── 10. Slug rename ──');
-r = await api(speakerCookie, 'PATCH', `/api/slates/${slateId}`, { slug: 'ar-private-x9k2' });
+r = await api(hostCookie, 'PATCH', `/api/slates/${slateId}`, { slug: 'ar-private-x9k2' });
 (r.status < 300) ? ok('slug renamed') : bad('slug rename', r);
 
 const oldUrlRes = await fetch(`${BASE}/ar`);
@@ -193,21 +193,21 @@ const newUrlRes = await fetch(`${BASE}/ar-private-x9k2`);
 newUrlRes.status === 200 ? ok('new slug /ar-private-x9k2 → 200') : bad('new slug fetch', newUrlRes.status);
 
 // Reset slug for any further tests
-await api(speakerCookie, 'PATCH', `/api/slates/${slateId}`, { slug: 'ar' });
+await api(hostCookie, 'PATCH', `/api/slates/${slateId}`, { slug: 'ar' });
 
 // ── 11. Show notes ─────────────────────────────────────────────────────
 console.log('\n── 11. Show notes ──');
-r = await api(speakerBCookie, 'PATCH', `/api/slots/${slotId}/show-notes`, {
+r = await api(hostBCookie, 'PATCH', `/api/slots/${slotId}/show-notes`, {
   show_notes: '# UNIQUE_TOKEN_v2_test\n\nEpisode notes here.',
 });
-(r.status < 300) ? ok('eric (slot speaker) wrote show notes') : bad('write notes', r);
+(r.status < 300) ? ok('eric (slot host) wrote show notes') : bad('write notes', r);
 
 // Public hidden when draft
 let publicHtml = await fetch(`${BASE}/ar/slot/${slotId}`).then(r => r.text());
 !publicHtml.includes('UNIQUE_TOKEN_v2_test') ? ok('draft notes hidden publicly') : bad('draft leak');
 
 // Publish
-r = await api(speakerCookie, 'POST', `/api/admin/slots/${slotId}/publish-notes`, {});
+r = await api(hostCookie, 'POST', `/api/admin/slots/${slotId}/publish-notes`, {});
 (r.status < 300) ? ok('notes published') : bad('publish', r);
 
 publicHtml = await fetch(`${BASE}/ar/slot/${slotId}`).then(r => r.text());

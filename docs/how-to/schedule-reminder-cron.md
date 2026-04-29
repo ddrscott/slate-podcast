@@ -1,6 +1,6 @@
 # Schedule the reminder cron
 
-Slate emails Speakers 48h and 24h before their slot, but doesn't trigger itself. You need an external scheduler to POST `/api/cron/reminders` hourly.
+Slate emails Hosts 48h and 24h before their slot, but doesn't trigger itself. You need an external scheduler to POST `/api/cron/reminders` hourly.
 
 The endpoint is idempotent: duplicate calls within the same hour are deduped via the `sent_reminders` table, so over-triggering is safe.
 

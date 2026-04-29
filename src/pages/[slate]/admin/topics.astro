@@ -1,6 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
-import ScheduleSuggestionPanel from '@/components/ScheduleSuggestionPanel.astro';
+import ScheduleTopicPanel from '@/components/ScheduleTopicPanel.astro';
 import { getDb } from '@/lib/db';
 import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
 import { displayName } from '@/lib/people';
@@ -11,7 +11,7 @@ const slug = Astro.params.slate;
 if (!slug) return new Response('Not found', { status: 404 });
 
 const user = Astro.locals.user;
-if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/admin/suggestions`));
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/admin/topics`));
 
 const db = getDb(Astro);
 const slate = await db.prepare('SELECT id, name, timezone FROM slates WHERE slug = ?').bind(slug)
@@ -21,8 +21,8 @@ if (!slate) return new Response('Not found', { status: 404 });
 const member = await db.prepare(
   'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
 ).bind(slate.id, user.id).first<{ role: string }>();
-if (!isAppAdmin(user.scopes) && member?.role !== 'speaker') {
-  return new Response('Speaker required', { status: 403 });
+if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
+  return new Response('Host required', { status: 403 });
 }
 const isAdmin = isAppAdmin(user.scopes);
 
@@ -31,13 +31,13 @@ const contribs = await db.prepare(
           s.submitted_at, s.scheduled_slot_id,
           u.email AS author_email, u.display_name AS author_display_name,
           sl.start_time AS scheduled_start, sl.duration_minutes AS scheduled_duration,
-          sl.speaker_id AS scheduled_speaker_id,
-          spk.email AS scheduled_speaker_email,
-          spk.display_name AS scheduled_speaker_display_name
-   FROM suggestions s
+          sl.host_id AS scheduled_host_id,
+          spk.email AS scheduled_host_email,
+          spk.display_name AS scheduled_host_display_name
+   FROM topics s
    JOIN users u ON u.id = s.author_id
    LEFT JOIN slots sl ON sl.id = s.scheduled_slot_id
-   LEFT JOIN users spk ON spk.id = sl.speaker_id
+   LEFT JOIN users spk ON spk.id = sl.host_id
    WHERE s.slate_id = ?
    ORDER BY (s.status = 'open') DESC, s.upvote_count DESC, s.submitted_at DESC`,
 ).bind(slate.id).all<any>();
@@ -48,18 +48,18 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
 });
 ---
 
-<Layout title={`Moderate suggestions · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+<Layout title={`Moderate topics · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
   <section class="py-6 max-w-4xl">
     <div class="flex items-baseline justify-between mb-4">
       <div>
         <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
-        <h1 class="text-2xl font-bold">Moderate suggestions</h1>
+        <h1 class="text-2xl font-bold">Moderate topics</h1>
       </div>
       <a href={`/${slug}/admin`} class="btn btn-sm btn-ghost border border-base-300">← Slate admin</a>
     </div>
 
     <div class="space-y-2">
-      {contribs.results.length === 0 && <p class="opacity-60 text-sm">No suggestions yet.</p>}
+      {contribs.results.length === 0 && <p class="opacity-60 text-sm">No topics yet.</p>}
       {contribs.results.map((c: any) => (
         <div class={`card ${c.status === 'archived' ? 'opacity-50' : 'bg-base-100'} border border-base-300`}>
           <div class="card-body py-3">
@@ -86,21 +86,21 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
                 {c.status === 'scheduled' && c.scheduled_start && (
                   <p class="text-xs mt-2 font-mono opacity-75">
                     📅 {fmtSched.format(new Date(c.scheduled_start * 1000))}
-                    {c.scheduled_speaker_email && <span class="opacity-60"> · {displayName({ display_name: c.scheduled_speaker_display_name, email: c.scheduled_speaker_email })}</span>}
+                    {c.scheduled_host_email && <span class="opacity-60"> · {displayName({ display_name: c.scheduled_host_display_name, email: c.scheduled_host_email })}</span>}
                   </p>
                 )}
                 {c.status === 'open' && (
                   <button class="schedule-trigger btn btn-xs btn-primary mt-3"
-                          data-suggestion-id={c.id}
-                          data-suggestion-title={c.title}>
+                          data-topic-id={c.id}
+                          data-topic-title={c.title}>
                     Claim &amp; schedule
                   </button>
                 )}
                 {c.status === 'scheduled' && c.scheduled_slot_id &&
-                  (c.scheduled_speaker_id === user.id || isAdmin) && (
+                  (c.scheduled_host_id === user.id || isAdmin) && (
                   <button class="unschedule-trigger btn btn-xs btn-ghost border border-base-300 mt-3 text-error"
                           data-slot-id={c.scheduled_slot_id}
-                          data-suggestion-title={c.title}>
+                          data-topic-title={c.title}>
                     Unschedule
                   </button>
                 )}
@@ -120,14 +120,14 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
     </div>
   </section>
 
-  <ScheduleSuggestionPanel slate={{ id: slate.id, slug: slug!, name: slate.name }} />
+  <ScheduleTopicPanel slate={{ id: slate.id, slug: slug!, name: slate.name }} />
 
   <script is:inline>
     document.querySelectorAll('.contrib-action').forEach(b => {
       b.addEventListener('click', async () => {
         const { id, status } = b.dataset;
         b.disabled = true;
-        const res = await fetch(`/api/admin/suggestions/${id}`, {
+        const res = await fetch(`/api/admin/topics/${id}`, {
           method: 'PATCH',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ status }),
@@ -139,10 +139,10 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
 
     document.querySelectorAll('.schedule-trigger').forEach(b => {
       b.addEventListener('click', () => {
-        window.dispatchEvent(new CustomEvent('schedule-suggestion', {
+        window.dispatchEvent(new CustomEvent('schedule-topic', {
           detail: {
-            suggestionId: b.dataset.suggestionId,
-            suggestionTitle: b.dataset.suggestionTitle,
+            topicId: b.dataset.topicId,
+            topicTitle: b.dataset.topicTitle,
           },
         }));
       });
@@ -150,7 +150,7 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
 
     document.querySelectorAll('.unschedule-trigger').forEach(b => {
       b.addEventListener('click', async () => {
-        if (!confirm(`Unschedule "${b.dataset.suggestionTitle}"? The slot goes back to open.`)) return;
+        if (!confirm(`Unschedule "${b.dataset.topicTitle}"? The slot goes back to open.`)) return;
         b.disabled = true;
         const res = await fetch(`/api/slots/${b.dataset.slotId}/claim-and-schedule`, { method: 'DELETE' });
         if (res.ok) location.reload();

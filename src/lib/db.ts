@@ -50,7 +50,7 @@ export function slugify(input: string): string {
     .slice(0, 64);
 }
 
-// Normalized form of a suggestion title for duplicate detection.
+// Normalized form of a topic title for duplicate detection.
 // Lowercase, strip non-alphanumeric, collapse whitespace, trim.
 // Two titles that fingerprint to the same string are treated as duplicates.
 export function fingerprint(input: string): string {

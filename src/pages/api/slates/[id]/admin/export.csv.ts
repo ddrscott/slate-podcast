@@ -1,13 +1,13 @@
 import type { APIRoute } from 'astro';
 import { getDb } from '@/lib/db';
-import { requireSpeakerOnSlate, jsonError } from '@/lib/access';
+import { requireHostOnSlate, jsonError } from '@/lib/access';
 
 export const prerender = false;
 
 export const GET: APIRoute = async (ctx) => {
   try {
     const slateId = ctx.params.id!;
-    await requireSpeakerOnSlate(ctx, slateId);
+    await requireHostOnSlate(ctx, slateId);
     const db = getDb(ctx);
 
     const slate = await db.prepare('SELECT name, slug, timezone FROM slates WHERE id = ?').bind(slateId)
@@ -17,12 +17,12 @@ export const GET: APIRoute = async (ctx) => {
     const rows = await db.prepare(
       `SELECT sl.id AS slot_id, sl.start_time, sl.duration_minutes, sl.status,
               sl.custom_title, sl.notes_internal, sl.show_notes, sl.show_notes_published_at, sl.rule_id,
-              sl.speaker_id, su.email AS speaker_email,
-              sug.id AS suggestion_id, sug.title AS suggestion_title, sug.description AS suggestion_description,
-              sug.upvote_count, ua.email AS suggestion_author_email
+              sl.host_id, su.email AS host_email,
+              sug.id AS topic_id, sug.title AS topic_title, sug.description AS topic_description,
+              sug.upvote_count, ua.email AS topic_author_email
        FROM slots sl
-       LEFT JOIN users su ON su.id = sl.speaker_id
-       LEFT JOIN suggestions sug ON sug.id = sl.suggestion_id
+       LEFT JOIN users su ON su.id = sl.host_id
+       LEFT JOIN topics sug ON sug.id = sl.topic_id
        LEFT JOIN users ua ON ua.id = sug.author_id
        WHERE sl.slate_id = ? ORDER BY sl.start_time`,
     ).bind(slateId).all<Record<string, unknown>>();
@@ -34,8 +34,8 @@ export const GET: APIRoute = async (ctx) => {
 
     const headers = [
       'slot_id','date_local','time_local','duration_minutes','status',
-      'speaker_email','custom_title','suggestion_id','suggestion_title',
-      'suggestion_description','suggestion_author_email','upvote_count',
+      'host_email','custom_title','topic_id','topic_title',
+      'topic_description','topic_author_email','upvote_count',
       'show_notes','show_notes_published','notes_internal','rule_id','start_time_unix',
     ];
 
@@ -45,8 +45,8 @@ export const GET: APIRoute = async (ctx) => {
       const [d, t] = localIso.split(' ');
       lines.push([
         r.slot_id, d, t, r.duration_minutes, r.status,
-        r.speaker_email, r.custom_title, r.suggestion_id, r.suggestion_title,
-        r.suggestion_description, r.suggestion_author_email, r.upvote_count,
+        r.host_email, r.custom_title, r.topic_id, r.topic_title,
+        r.topic_description, r.topic_author_email, r.upvote_count,
         r.show_notes, r.show_notes_published_at ? '1' : '', r.notes_internal,
         r.rule_id, r.start_time,
       ].map(csvEscape).join(','));

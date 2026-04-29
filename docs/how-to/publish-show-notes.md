@@ -2,7 +2,7 @@
 
 Show notes are the public, archival record of an episode. Markdown in, sanitized HTML out.
 
-You need to be the slot's Speaker (or App-Admin).
+You need to be the slot's Host (or App-Admin).
 
 ## 1. Open the slot's show-notes editor
 

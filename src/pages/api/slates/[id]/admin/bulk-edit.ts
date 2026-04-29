@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { getDb } from '@/lib/db';
-import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate } from '@/lib/access';
+import { HttpError, jsonError, jsonOk, requireHostOnSlate } from '@/lib/access';
 
 export const prerender = false;
 
@@ -15,7 +15,7 @@ interface RowDiff {
 export const POST: APIRoute = async (ctx) => {
   try {
     const slateId = ctx.params.id!;
-    await requireSpeakerOnSlate(ctx, slateId);
+    await requireHostOnSlate(ctx, slateId);
 
     const body = await ctx.request.json() as { diffs?: RowDiff[] };
     const diffs = Array.isArray(body.diffs) ? body.diffs : [];

@@ -13,9 +13,9 @@ const db = getDb(Astro);
 const slates = await db.prepare(
   `SELECT s.id, s.slug, s.name, s.description, s.timezone, s.is_public, s.created_at,
           (SELECT COUNT(*) FROM slate_members WHERE slate_id = s.id) AS members,
-          (SELECT COUNT(*) FROM slate_members WHERE slate_id = s.id AND role = 'speaker') AS speakers,
+          (SELECT COUNT(*) FROM slate_members WHERE slate_id = s.id AND role = 'host') AS hosts,
           (SELECT COUNT(*) FROM slots WHERE slate_id = s.id AND status = 'open') AS open_slots,
-          (SELECT COUNT(*) FROM suggestions WHERE slate_id = s.id AND status = 'open') AS open_suggestions
+          (SELECT COUNT(*) FROM topics WHERE slate_id = s.id AND status = 'open') AS open_topics
    FROM slates s ORDER BY s.created_at DESC`,
 ).all();
 ---
@@ -58,9 +58,9 @@ const slates = await db.prepare(
               </div>
               <div class="text-right text-sm">
                 <div><span class="font-mono opacity-60">{s.members}</span> members</div>
-                <div><span class="font-mono opacity-60">{s.speakers}</span> speakers</div>
+                <div><span class="font-mono opacity-60">{s.hosts}</span> hosts</div>
                 <div><span class="font-mono opacity-60">{s.open_slots}</span> open slots</div>
-                <div><span class="font-mono opacity-60">{s.open_suggestions}</span> open suggestions</div>
+                <div><span class="font-mono opacity-60">{s.open_topics}</span> open topics</div>
               </div>
             </div>
           </a>

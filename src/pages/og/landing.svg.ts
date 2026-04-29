@@ -14,8 +14,8 @@ export const GET: APIRoute = () => {
   <text x="80" y="110" fill="#FF6A2A" font-family="ui-monospace, 'JetBrains Mono', monospace" font-size="22" font-weight="500">// slate.ljs.app</text>
 
   <text x="80" y="240" fill="#0f172a" font-size="78" font-weight="800" letter-spacing="-1">A year of empty slots.</text>
-  <text x="80" y="320" fill="#0f172a" font-size="78" font-weight="800" letter-spacing="-1" opacity="0.6">A pool of suggestions.</text>
-  <text x="80" y="400" fill="#0f172a" font-size="78" font-weight="800" letter-spacing="-1">Speakers pick. Members vote.</text>
+  <text x="80" y="320" fill="#0f172a" font-size="78" font-weight="800" letter-spacing="-1" opacity="0.6">A pool of topics.</text>
+  <text x="80" y="400" fill="#0f172a" font-size="78" font-weight="800" letter-spacing="-1">Hosts pick. Members vote.</text>
 
   <text x="80" y="475" fill="#475569" font-size="28" font-weight="400">Community-driven podcast scheduling for volunteer-run shows.</text>
 

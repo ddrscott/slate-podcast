@@ -1,4 +1,4 @@
--- Slate v2 — Speakers, Members, Suggestions, Upvotes (D1 / SQLite)
+-- Slate v2 — Hosts, Members, Topics, Upvotes (D1 / SQLite)
 -- Apply: `npm run db:apply:local` or `npm run db:apply:remote`
 
 PRAGMA foreign_keys = ON;
@@ -33,12 +33,12 @@ CREATE TABLE IF NOT EXISTS slates (
 CREATE INDEX IF NOT EXISTS idx_slates_slug ON slates(slug);
 
 -- ─── Slate membership ──────────────────────────────────────────────────────
--- Open signup as 'member' via /[slate]/join. Promotion to 'speaker' is
--- App-Admin only. A user has at most one role per slate (speaker > member).
+-- Open signup as 'member' via /[slate]/join. Promotion to 'host' is
+-- App-Admin only. A user has at most one role per slate (host > member).
 CREATE TABLE IF NOT EXISTS slate_members (
   slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role TEXT NOT NULL CHECK (role IN ('member','speaker')),
+  role TEXT NOT NULL CHECK (role IN ('member','host')),
   joined_at INTEGER NOT NULL,
   promoted_at INTEGER,
   promoted_by TEXT REFERENCES users(id),
@@ -48,7 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_slate_members_user ON slate_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_slate_members_slate_role ON slate_members(slate_id, role);
 
 -- ─── Recurrence rules ──────────────────────────────────────────────────────
--- Speakers (or App Admins) configure these per slate. Slot generation
+-- Hosts (or App Admins) configure these per slate. Slot generation
 -- combines all active rules and is idempotent via UNIQUE(slate_id, start_time).
 CREATE TABLE IF NOT EXISTS slot_rules (
   id TEXT PRIMARY KEY,
@@ -68,13 +68,13 @@ CREATE INDEX IF NOT EXISTS idx_slot_rules_slate ON slot_rules(slate_id, active);
 
 -- ─── Slots ────────────────────────────────────────────────────────────────
 -- Status lifecycle:
---   open      → no speaker yet
---   assigned  → speaker_id set, no topic yet
---   confirmed → speaker_id + suggestion_id both set
---   recorded  → speaker marked recorded
+--   open      → no host yet
+--   assigned  → host_id set, no topic yet
+--   confirmed → host_id + topic_id both set
+--   recorded  → host marked recorded
 --   published → show notes published
 --   cancelled → coordinator killed it
--- Speakers can sub in for each other (overwrite speaker_id) — cooperative coverage.
+-- Hosts can sub in for each other (overwrite host_id) — cooperative coverage.
 CREATE TABLE IF NOT EXISTS slots (
   id TEXT PRIMARY KEY,
   slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
@@ -83,8 +83,8 @@ CREATE TABLE IF NOT EXISTS slots (
   duration_minutes INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'open'
     CHECK (status IN ('open','assigned','confirmed','recorded','published','cancelled')),
-  speaker_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-  suggestion_id TEXT REFERENCES suggestions(id) ON DELETE SET NULL,
+  host_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  topic_id TEXT REFERENCES topics(id) ON DELETE SET NULL,
   custom_title TEXT,
   notes_internal TEXT,
   show_notes TEXT,
@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS slots (
 );
 CREATE INDEX IF NOT EXISTS idx_slots_slate_time ON slots(slate_id, start_time);
 CREATE INDEX IF NOT EXISTS idx_slots_status ON slots(slate_id, status);
-CREATE INDEX IF NOT EXISTS idx_slots_speaker ON slots(speaker_id);
+CREATE INDEX IF NOT EXISTS idx_slots_host ON slots(host_id);
 
 CREATE TABLE IF NOT EXISTS slot_assets (
   id TEXT PRIMARY KEY,
@@ -108,12 +108,12 @@ CREATE TABLE IF NOT EXISTS slot_assets (
 );
 CREATE INDEX IF NOT EXISTS idx_slot_assets_slot ON slot_assets(slot_id);
 
--- ─── Suggestions ──────────────────────────────────────────────────────────
--- Members and Speakers post suggestions; both can upvote.
+-- ─── Topics ───────────────────────────────────────────────────────────────
+-- Members and Hosts post topics; both can upvote.
 -- `fingerprint` is a normalized title for duplicate detection.
 -- `upvote_count` is denormalized — kept in sync at write time.
--- `status` flips to 'scheduled' when a speaker marries it to a slot.
-CREATE TABLE IF NOT EXISTS suggestions (
+-- `status` flips to 'scheduled' when a host marries it to a slot.
+CREATE TABLE IF NOT EXISTS topics (
   id TEXT PRIMARY KEY,
   slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
   author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -130,21 +130,21 @@ CREATE TABLE IF NOT EXISTS suggestions (
   scheduled_by TEXT REFERENCES users(id),
   submitted_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_suggestions_slate_status ON suggestions(slate_id, status);
-CREATE INDEX IF NOT EXISTS idx_suggestions_slate_fp ON suggestions(slate_id, fingerprint);
-CREATE INDEX IF NOT EXISTS idx_suggestions_votes ON suggestions(slate_id, upvote_count DESC);
+CREATE INDEX IF NOT EXISTS idx_topics_slate_status ON topics(slate_id, status);
+CREATE INDEX IF NOT EXISTS idx_topics_slate_fp ON topics(slate_id, fingerprint);
+CREATE INDEX IF NOT EXISTS idx_topics_votes ON topics(slate_id, upvote_count DESC);
 
-CREATE TABLE IF NOT EXISTS suggestion_votes (
-  suggestion_id TEXT NOT NULL REFERENCES suggestions(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS topic_votes (
+  topic_id TEXT NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   voted_at INTEGER NOT NULL,
-  PRIMARY KEY (suggestion_id, user_id)
+  PRIMARY KEY (topic_id, user_id)
 );
-CREATE INDEX IF NOT EXISTS idx_votes_user ON suggestion_votes(user_id);
+CREATE INDEX IF NOT EXISTS idx_topic_votes_user ON topic_votes(user_id);
 
 -- ─── Activity log ──────────────────────────────────────────────────────────
 -- Per-slate event stream. New events appended on the relevant mutation
--- endpoints (member join, speaker promotion, suggestion posted, slot
+-- endpoints (member join, host promotion, topic posted, slot
 -- scheduled/unscheduled, show notes published). Read state is tracked
 -- per-user-per-slate as a high-water mark — `created_at <= watermark_at`
 -- means the user has seen it.
@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS activity (
   slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
   actor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
   kind TEXT NOT NULL,
-  suggestion_id TEXT REFERENCES suggestions(id) ON DELETE SET NULL,
+  topic_id TEXT REFERENCES topics(id) ON DELETE SET NULL,
   slot_id TEXT REFERENCES slots(id) ON DELETE SET NULL,
   target_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
   meta TEXT,                                                    -- JSON; free-form per-kind payload

@@ -14,7 +14,7 @@ const slate = await db.prepare('SELECT id, name FROM slates WHERE slug = ?').bin
 if (!slate) return new Response('Not found', { status: 404 });
 
 const user = Astro.locals.user;
-if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/suggest`));
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/topics/new`));
 
 if (!isAppAdmin(user.scopes)) {
   const m = await db.prepare(
@@ -29,7 +29,7 @@ if (!isAppAdmin(user.scopes)) {
     <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
     <h1 class="text-2xl font-bold">Suggest a topic</h1>
     <p class="opacity-75 mt-2 text-sm">
-      Add an idea to the pool. Speakers pick from the most-upvoted suggestions when filling slots.
+      Add an idea to the pool. Hosts pick from the most-upvoted topics when filling slots.
     </p>
 
     <form id="suggest-form" class="mt-6 space-y-3">
@@ -58,7 +58,7 @@ if (!isAppAdmin(user.scopes)) {
 
       <div class="flex gap-2">
         <button type="submit" class="btn btn-primary">Submit</button>
-        <a href={`/${slug}/suggestions`} class="btn btn-ghost border border-base-300">Browse pool</a>
+        <a href={`/${slug}/topics`} class="btn btn-ghost border border-base-300">Browse pool</a>
       </div>
       <p id="status" class="text-sm hidden"></p>
     </form>
@@ -76,14 +76,14 @@ if (!isAppAdmin(user.scopes)) {
       dupTimer = setTimeout(async () => {
         const t = titleInput.value.trim();
         if (t.length < 4) { dupWarning.classList.add('hidden'); return; }
-        const res = await fetch(`/api/slates/${slateId}/suggestions/check?title=${encodeURIComponent(t)}`);
+        const res = await fetch(`/api/slates/${slateId}/topics/check?title=${encodeURIComponent(t)}`);
         if (!res.ok) return;
         const body = await res.json();
         const matches = body.matches ?? [];
         if (matches.length === 0) { dupWarning.classList.add('hidden'); return; }
         dupWarning.classList.remove('hidden');
         dupWarning.innerHTML = `<div><strong>Looks similar to:</strong><ul class="mt-1 space-y-1">${
-          matches.map(m => `<li>· <a href="/${slug}/suggestions" class="link">${escapeHtml(m.title)}</a> <span class="opacity-60 font-mono text-xs">▲ ${m.upvote_count}</span></li>`).join('')
+          matches.map(m => `<li>· <a href="/${slug}/topics" class="link">${escapeHtml(m.title)}</a> <span class="opacity-60 font-mono text-xs">▲ ${m.upvote_count}</span></li>`).join('')
         }</ul><p class="text-xs mt-2 opacity-75">Consider voting on the existing one instead — or submit anyway if yours is genuinely different.</p></div>`;
       }, 400);
     });
@@ -98,7 +98,7 @@ if (!isAppAdmin(user.scopes)) {
       status.classList.remove('hidden', 'text-error', 'text-success');
       status.textContent = 'Submitting…';
 
-      let res = await fetch(`/api/slates/${slateId}/suggestions`, {
+      let res = await fetch(`/api/slates/${slateId}/topics`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -113,7 +113,7 @@ if (!isAppAdmin(user.scopes)) {
         const body = await res.json();
         const dup = body.duplicate;
         if (confirm(`This looks like a duplicate of: "${dup.title}" (${dup.upvote_count} upvotes). Submit anyway?`)) {
-          res = await fetch(`/api/slates/${slateId}/suggestions?force=1`, {
+          res = await fetch(`/api/slates/${slateId}/topics?force=1`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
@@ -125,7 +125,7 @@ if (!isAppAdmin(user.scopes)) {
           });
         } else {
           status.classList.add('text-success');
-          status.textContent = 'Cancelled. Tip: upvote the existing suggestion instead.';
+          status.textContent = 'Cancelled. Tip: upvote the existing topic instead.';
           return;
         }
       }

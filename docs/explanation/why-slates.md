@@ -6,7 +6,7 @@ This is a deliberate choice with real costs. Worth explaining why.
 
 ## The Calendly-inversion model
 
-Calendly is "host posts availability, guest picks a slot." Slate inverts that: **the host posts a year of empty demand, and many speakers see the gaps and claim the ones they want.**
+Calendly is "host posts availability, guest picks a slot." Slate inverts that: **the host posts a year of empty demand, and many hosts see the gaps and claim the ones they want.**
 
 The core unit isn't a person's calendar. It's a *show's* calendar. The data model should reflect that.
 
@@ -24,7 +24,7 @@ We don't need it because:
 ## What we lose
 
 - **Brand cohesion across multiple shows under one org.** A network like NPR would want this. Slate isn't aimed at NPR.
-- **Cross-show speaker reuse.** A speaker on two shows has two memberships and two role rows. Trivial cost in DB; small annoyance in user-onboarding emails.
+- **Cross-show host reuse.** A host on two shows has two memberships and two role rows. Trivial cost in DB; small annoyance in user-onboarding emails.
 - **Org-level admin scope.** If you run two slates, you're an App-Admin (global) — there's no middle tier. The blast radius of App-Admin is wider than is strictly clean. We accept this; the user pool is small.
 
 ## Why "slate"

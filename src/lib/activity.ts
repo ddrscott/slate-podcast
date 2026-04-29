@@ -15,7 +15,7 @@
 //
 // That's the contract. Callers stay tiny:
 //
-//     await Enqueue.slotReleased(ctx, { slateId, actorId, slotId, suggestionId });
+//     await Enqueue.slotReleased(ctx, { slateId, actorId, slotId, topicId });
 //
 // And the activity page renders without ever asking "what kind is this?".
 
@@ -25,11 +25,11 @@ import { displayName } from './people';
 
 export type ActivityKind =
   | 'member_joined'
-  | 'speaker_promoted'
-  | 'speaker_demoted'
-  | 'speaker_substituted'   // one Speaker took over a slot from another
-  | 'suggestion_posted'
-  | 'suggestion_archived'
+  | 'host_promoted'
+  | 'host_demoted'
+  | 'host_substituted'   // one Host took over a slot from another
+  | 'topic_posted'
+  | 'topic_archived'
   | 'slot_scheduled'
   | 'slot_unscheduled'
   | 'notes_published'
@@ -39,7 +39,7 @@ export interface LogArgs {
   kind: ActivityKind;
   slateId: string;
   actorId?: string | null;
-  suggestionId?: string | null;
+  topicId?: string | null;
   slotId?: string | null;
   targetUserId?: string | null;
   meta?: Record<string, unknown>;
@@ -50,14 +50,14 @@ export async function logActivity(ctx: APIContext, args: LogArgs): Promise<void>
     const db = getDb(ctx);
     const id = `act_${randomId(10)}`;
     await db.prepare(
-      `INSERT INTO activity (id, slate_id, actor_id, kind, suggestion_id, slot_id, target_user_id, meta, created_at)
+      `INSERT INTO activity (id, slate_id, actor_id, kind, topic_id, slot_id, target_user_id, meta, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       id,
       args.slateId,
       args.actorId ?? null,
       args.kind,
-      args.suggestionId ?? null,
+      args.topicId ?? null,
       args.slotId ?? null,
       args.targetUserId ?? null,
       args.meta ? JSON.stringify(args.meta) : null,
@@ -81,13 +81,13 @@ export const Enqueue = {
     return logActivity(ctx, { kind: 'member_joined', ...args });
   },
 
-  speakerPromoted(ctx: APIContext, args: BaseArgs & { targetUserId: string }) {
-    return logActivity(ctx, { kind: 'speaker_promoted', ...args });
+  hostPromoted(ctx: APIContext, args: BaseArgs & { targetUserId: string }) {
+    return logActivity(ctx, { kind: 'host_promoted', ...args });
   },
 
-  speakerDemoted(ctx: APIContext, args: BaseArgs & { targetUserId: string; self?: boolean }) {
+  hostDemoted(ctx: APIContext, args: BaseArgs & { targetUserId: string; self?: boolean }) {
     return logActivity(ctx, {
-      kind: 'speaker_demoted',
+      kind: 'host_demoted',
       slateId: args.slateId,
       actorId: args.actorId,
       targetUserId: args.targetUserId,
@@ -95,115 +95,115 @@ export const Enqueue = {
     });
   },
 
-  // Cooperative coverage: a Speaker takes over a slot another Speaker had.
-  // target_user_id holds the *previous* speaker (the one covered for) so
+  // Cooperative coverage: a Host takes over a slot another Host had.
+  // target_user_id holds the *previous* host (the one covered for) so
   // the activity feed renders "actor subbed in for target" naturally.
-  speakerSubstituted(ctx: APIContext, args: BaseArgs & {
+  hostSubstituted(ctx: APIContext, args: BaseArgs & {
     slotId: string;
-    suggestionId: string | null;
-    previousSpeakerId: string;
-    newSpeakerId: string;
+    topicId: string | null;
+    previousHostId: string;
+    newHostId: string;
   }) {
     return logActivity(ctx, {
-      kind: 'speaker_substituted',
+      kind: 'host_substituted',
       slateId: args.slateId,
       actorId: args.actorId,
       slotId: args.slotId,
-      suggestionId: args.suggestionId,
-      targetUserId: args.previousSpeakerId,
-      meta: { new_speaker_id: args.newSpeakerId },
+      topicId: args.topicId,
+      targetUserId: args.previousHostId,
+      meta: { new_host_id: args.newHostId },
     });
   },
 
-  suggestionPosted(ctx: APIContext, args: BaseArgs & { suggestionId: string; title: string }) {
+  topicPosted(ctx: APIContext, args: BaseArgs & { topicId: string; title: string }) {
     return logActivity(ctx, {
-      kind: 'suggestion_posted',
+      kind: 'topic_posted',
       slateId: args.slateId,
       actorId: args.actorId,
-      suggestionId: args.suggestionId,
+      topicId: args.topicId,
       meta: { title: args.title },
     });
   },
 
-  suggestionArchived(ctx: APIContext, args: BaseArgs & { suggestionId: string }) {
+  topicArchived(ctx: APIContext, args: BaseArgs & { topicId: string }) {
     return logActivity(ctx, {
-      kind: 'suggestion_archived',
+      kind: 'topic_archived',
       slateId: args.slateId,
       actorId: args.actorId,
-      suggestionId: args.suggestionId,
+      topicId: args.topicId,
     });
   },
 
   slotScheduled(ctx: APIContext, args: BaseArgs & {
     slotId: string;
-    suggestionId: string;
-    replacedSuggestionId?: string;
+    topicId: string;
+    replacedTopicId?: string;
   }) {
     return logActivity(ctx, {
       kind: 'slot_scheduled',
       slateId: args.slateId,
       actorId: args.actorId,
       slotId: args.slotId,
-      suggestionId: args.suggestionId,
-      meta: args.replacedSuggestionId ? { replaced_suggestion_id: args.replacedSuggestionId } : undefined,
+      topicId: args.topicId,
+      meta: args.replacedTopicId ? { replaced_topic_id: args.replacedTopicId } : undefined,
     });
   },
 
   // Slot unscheduled via the explicit "claim & schedule" undo path.
   slotUnscheduled(ctx: APIContext, args: BaseArgs & {
     slotId: string;
-    suggestionId: string | null;
+    topicId: string | null;
   }) {
     return logActivity(ctx, {
       kind: 'slot_unscheduled',
       slateId: args.slateId,
       actorId: args.actorId,
       slotId: args.slotId,
-      suggestionId: args.suggestionId,
+      topicId: args.topicId,
     });
   },
 
-  // Slot released by its speaker (the "Release the slot" action). Same kind
+  // Slot released by its host (the "Release the slot" action). Same kind
   // as unschedule but tagged so the renderer can phrase it as "released".
   slotReleased(ctx: APIContext, args: BaseArgs & {
     slotId: string;
-    suggestionId: string | null;
+    topicId: string | null;
   }) {
     return logActivity(ctx, {
       kind: 'slot_unscheduled',
       slateId: args.slateId,
       actorId: args.actorId,
       slotId: args.slotId,
-      suggestionId: args.suggestionId,
+      topicId: args.topicId,
       meta: { release: true },
     });
   },
 
-  // Topic detached from a confirmed slot but the slot retains its speaker.
+  // Topic detached from a confirmed slot but the slot retains its host.
   topicDetached(ctx: APIContext, args: BaseArgs & {
     slotId: string;
-    suggestionId: string;
+    topicId: string;
   }) {
     return logActivity(ctx, {
       kind: 'slot_unscheduled',
       slateId: args.slateId,
       actorId: args.actorId,
       slotId: args.slotId,
-      suggestionId: args.suggestionId,
+      topicId: args.topicId,
       meta: { topic_detached: true },
     });
   },
 
   notesPublished(ctx: APIContext, args: BaseArgs & {
     slotId: string;
-    suggestionId: string | null;
+    topicId: string | null;
   }) {
     return logActivity(ctx, {
       kind: 'notes_published',
       slateId: args.slateId,
       actorId: args.actorId,
       slotId: args.slotId,
-      suggestionId: args.suggestionId,
+      topicId: args.topicId,
     });
   },
 
@@ -230,8 +230,8 @@ export interface ActivityRow {
   actor_display_name: string | null;
   target_email: string | null;
   target_display_name: string | null;
-  suggestion_id: string | null;
-  suggestion_title: string | null;
+  topic_id: string | null;
+  topic_title: string | null;
   slot_id: string | null;
   slot_start: number | null;
   meta: Record<string, any>;
@@ -245,7 +245,7 @@ export interface RenderContext {
 export type Token =
   | { type: 'text'; value: string }
   | { type: 'name'; value: string; opacity?: 'primary' | 'secondary' }
-  | { type: 'suggestion'; href: string; title: string }
+  | { type: 'topic'; href: string; title: string }
   | { type: 'slot'; href: string; label: string }
   | { type: 'rename'; from: string; to: string };
 
@@ -262,22 +262,22 @@ const targetName = (r: ActivityRow): string =>
 const txt = (value: string): Token => ({ type: 'text', value });
 const name = (value: string, opacity?: 'primary' | 'secondary'): Token =>
   ({ type: 'name', value, opacity });
-const suggestionLink = (slug: string, title: string): Token =>
-  ({ type: 'suggestion', href: `/${slug}/suggestions`, title });
+const topicLink = (slug: string, title: string): Token =>
+  ({ type: 'topic', href: `/${slug}/topics`, title });
 const slotLink = (slug: string, slotId: string, label: string): Token =>
   ({ type: 'slot', href: `/${slug}/slot/${slotId}`, label });
 
-// Shared trailing token sequence: "[on/for/·] {suggestion} [for/·] {slot}".
-function suggestionAndSlot(
+// Shared trailing token sequence: "[on/for/·] {topic} [for/·] {slot}".
+function topicAndSlot(
   r: ActivityRow,
   ctx: RenderContext,
-  joinSuggestion: string,
+  joinTopic: string,
   joinSlot: string,
 ): Token[] {
   const out: Token[] = [];
-  if (r.suggestion_title) {
-    out.push(txt(joinSuggestion));
-    out.push(suggestionLink(ctx.slug, r.suggestion_title));
+  if (r.topic_title) {
+    out.push(txt(joinTopic));
+    out.push(topicLink(ctx.slug, r.topic_title));
   }
   if (r.slot_start && r.slot_id) {
     out.push(txt(joinSlot));
@@ -292,41 +292,41 @@ const RENDERERS: Record<ActivityKind, (r: ActivityRow, ctx: RenderContext) => To
     txt(' joined as a Member'),
   ],
 
-  speaker_promoted: (r) => [
+  host_promoted: (r) => [
     name(targetName(r)),
-    txt(' was promoted to Speaker by '),
+    txt(' was promoted to Host by '),
     name(actorName(r), 'secondary'),
   ],
 
-  speaker_demoted: (r) => [
+  host_demoted: (r) => [
     name(targetName(r)),
     txt(r.meta.self ? ' stepped down to Member' : ' was demoted to Member by '),
     ...(r.meta.self ? [] : [name(actorName(r), 'secondary')]),
   ],
 
-  speaker_substituted: (r, ctx) => [
+  host_substituted: (r, ctx) => [
     name(actorName(r)),
     txt(' subbed in for '),
     name(targetName(r)),
-    ...suggestionAndSlot(r, ctx, ' on ', ' · '),
+    ...topicAndSlot(r, ctx, ' on ', ' · '),
   ],
 
-  suggestion_posted: (r, ctx) => [
+  topic_posted: (r, ctx) => [
     name(actorName(r)),
     txt(' suggested '),
-    ...(r.suggestion_title ? [suggestionLink(ctx.slug, r.suggestion_title)] : []),
+    ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : []),
   ],
 
-  suggestion_archived: (r, ctx) => [
+  topic_archived: (r, ctx) => [
     name(actorName(r)),
     txt(' archived '),
-    ...(r.suggestion_title ? [suggestionLink(ctx.slug, r.suggestion_title)] : []),
+    ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : []),
   ],
 
   slot_scheduled: (r, ctx) => [
     name(actorName(r)),
-    txt(r.meta.replaced_suggestion_id ? ' switched the topic to ' : ' scheduled '),
-    ...(r.suggestion_title ? [suggestionLink(ctx.slug, r.suggestion_title)] : []),
+    txt(r.meta.replaced_topic_id ? ' switched the topic to ' : ' scheduled '),
+    ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : []),
     ...(r.slot_start && r.slot_id ? [
       txt(' for '),
       slotLink(ctx.slug, r.slot_id, ctx.fmtSlotTime(r.slot_start)),
@@ -340,14 +340,14 @@ const RENDERERS: Record<ActivityKind, (r: ActivityRow, ctx: RenderContext) => To
     return [
       name(actorName(r)),
       txt(verb),
-      ...suggestionAndSlot(r, ctx, '', ' on '),
+      ...topicAndSlot(r, ctx, '', ' on '),
     ];
   },
 
   notes_published: (r, ctx) => [
     name(actorName(r)),
     txt(' published show notes for '),
-    ...suggestionAndSlot(r, ctx, '', ' · '),
+    ...topicAndSlot(r, ctx, '', ' · '),
   ],
 
   slate_renamed: (r) => [

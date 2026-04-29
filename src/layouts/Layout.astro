@@ -13,8 +13,8 @@ interface Props {
   // shortcut, and the role line in the Account dropdown without re-querying.
   slateContext?: {
     isMember: boolean;
-    isSpeaker: boolean;
-    role?: 'member' | 'speaker' | null;
+    isHost: boolean;
+    role?: 'member' | 'host' | null;
     unreadActivity?: number;
   };
   // Override the auto-derived OG image URL for non-slate pages.
@@ -23,14 +23,14 @@ interface Props {
   ogDescription?: string;
 }
 
-const { title = 'Slate', description = 'Coordinate a year of podcast slots across a swarm of speakers.', slate, slateContext, ogImage, ogDescription } = Astro.props;
+const { title = 'Slate', description = 'Coordinate a year of podcast slots across a swarm of hosts.', slate, slateContext, ogImage, ogDescription } = Astro.props;
 const user = Astro.locals.user;
 const userIsAppAdmin = isAppAdmin(user?.scopes);
 const showActivityIcon = !!(slate && slateContext?.isMember);
-const showManageBtn = !!(slate && slateContext?.isSpeaker);
+const showManageBtn = !!(slate && slateContext?.isHost);
 const unreadActivity = slateContext?.unreadActivity ?? 0;
 const slateRoleLabel = slateContext?.role
-  ?? (slateContext?.isSpeaker ? 'speaker' : slateContext?.isMember ? 'member' : null);
+  ?? (slateContext?.isHost ? 'host' : slateContext?.isMember ? 'member' : null);
 
 const env = getEnv(Astro);
 const url = new URL(Astro.request.url);
@@ -43,13 +43,13 @@ const brandHref = slate ? `/${slate.slug}` : '/';
 const brandLabel = slate ? slate.name : 'slate';
 
 // OG card defaults. Slate pages get a per-slate generated SVG card with an
-// invitation to join + suggestion-pool stats. Non-slate pages get a generic
+// invitation to join + topic-pool stats. Non-slate pages get a generic
 // fallback unless `ogImage` is overridden.
 const canonicalUrl = url.toString();
 const computedOgImage = ogImage ?? (slate ? `${url.origin}/og/${slate.slug}.svg` : `${url.origin}/og/landing.svg`);
 const ogTitle = slate ? `Join ${slate.name} on Slate` : title;
 const computedOgDescription = ogDescription ?? (slate
-  ? `Members suggest topics. Everyone upvotes. Speakers pick what to record. Sign up free.`
+  ? `Members suggest topics. Everyone upvotes. Hosts pick what to record. Sign up free.`
   : description);
 ---
 

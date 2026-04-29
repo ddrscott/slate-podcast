@@ -33,12 +33,12 @@ const rows = await db.prepare(
   `SELECT a.id, a.kind, a.created_at, a.meta,
           actor.email AS actor_email, actor.display_name AS actor_display_name,
           target.email AS target_email, target.display_name AS target_display_name,
-          a.suggestion_id, sug.title AS suggestion_title,
+          a.topic_id, sug.title AS topic_title,
           a.slot_id, sl.start_time AS slot_start
    FROM activity a
    LEFT JOIN users  actor  ON actor.id  = a.actor_id
    LEFT JOIN users  target ON target.id = a.target_user_id
-   LEFT JOIN suggestions sug ON sug.id = a.suggestion_id
+   LEFT JOIN topics sug ON sug.id = a.topic_id
    LEFT JOIN slots sl ON sl.id = a.slot_id
    WHERE a.slate_id = ?
    ORDER BY a.created_at DESC

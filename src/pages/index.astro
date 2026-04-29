@@ -20,12 +20,12 @@ const publicSlates = await db.prepare(
     <p class="font-mono text-sm text-signal mb-2">// volunteer-run podcasts</p>
     <h1 class="text-4xl md:text-5xl font-bold tracking-tight leading-tight">
       A year of empty slots.<br/>
-      <span class="opacity-60">A pool of suggestions.</span><br/>
-      Speakers pick. Members vote.
+      <span class="opacity-60">A pool of topics.</span><br/>
+      Hosts pick. Members vote.
     </h1>
     <p class="mt-6 text-lg opacity-80 max-w-prose">
       Slate inverts the Calendly model. The host posts a year of open demand;
-      Speakers see the gaps and claim slots; Members feed topic ideas into a
+      Hosts see the gaps and claim slots; Members feed topic ideas into a
       shared pool that everyone votes on.
     </p>
     <div class="mt-8 flex gap-3">
@@ -55,21 +55,21 @@ const publicSlates = await db.prepare(
       <div class="card-body">
         <p class="font-mono text-xs text-signal">role 01</p>
         <h2 class="card-title">App Admin</h2>
-        <p class="text-sm opacity-80">Creates slates and grants Speaker permissions. (You're an Admin if your auth.ljs.app token has the <code>admin</code> scope.)</p>
+        <p class="text-sm opacity-80">Creates slates and grants Host permissions. (You're an Admin if your auth.ljs.app token has the <code>admin</code> scope.)</p>
       </div>
     </div>
     <div class="card bg-base-200 border border-base-300">
       <div class="card-body">
         <p class="font-mono text-xs text-signal">role 02</p>
-        <h2 class="card-title">Speaker</h2>
-        <p class="text-sm opacity-80">Runs episodes on a slate. Defines scheduling rules, claims slots, picks topics from the suggestion pool, writes show notes.</p>
+        <h2 class="card-title">Host</h2>
+        <p class="text-sm opacity-80">Runs episodes on a slate. Defines scheduling rules, claims slots, picks topics from the topic pool, writes show notes.</p>
       </div>
     </div>
     <div class="card bg-base-200 border border-base-300">
       <div class="card-body">
         <p class="font-mono text-xs text-signal">role 03</p>
         <h2 class="card-title">Member</h2>
-        <p class="text-sm opacity-80">Anyone with an email. Posts topic suggestions, upvotes others, sees the schedule. Cannot edit the calendar.</p>
+        <p class="text-sm opacity-80">Anyone with an email. Posts topic topics, upvotes others, sees the schedule. Cannot edit the calendar.</p>
       </div>
     </div>
   </section>

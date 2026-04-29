@@ -9,8 +9,8 @@ interface DueRow {
   slate_slug: string;
   start_time: number;
   duration_minutes: number;
-  speaker_email: string;
-  speaker_id: string;
+  host_email: string;
+  host_id: string;
   episode_title: string;
   topic_description: string | null;
 }
@@ -34,18 +34,18 @@ export async function runReminders(env: Env, db: D1Database): Promise<{ sent: nu
               s.name AS slate_name, s.timezone AS slate_timezone, s.slug AS slate_slug,
               COALESCE(sl.custom_title, sug.title) AS episode_title,
               sug.description AS topic_description,
-              sl.speaker_id, u.email AS speaker_email
+              sl.host_id, u.email AS host_email
        FROM slots sl
        JOIN slates s ON s.id = sl.slate_id
-       JOIN users u ON u.id = sl.speaker_id
-       LEFT JOIN suggestions sug ON sug.id = sl.suggestion_id
+       JOIN users u ON u.id = sl.host_id
+       LEFT JOIN topics sug ON sug.id = sl.topic_id
        WHERE sl.status = 'confirmed'
-         AND sl.speaker_id IS NOT NULL
+         AND sl.host_id IS NOT NULL
          AND sl.start_time >= ? AND sl.start_time < ?
          AND NOT EXISTS (
            SELECT 1 FROM sent_reminders sr
            WHERE sr.slot_id = sl.id AND sr.reminder_kind = ?
-                 AND sr.recipient_user_id = sl.speaker_id
+                 AND sr.recipient_user_id = sl.host_id
          )`,
     ).bind(lower, upper, cfg.kind).all<DueRow>();
 
@@ -60,7 +60,7 @@ export async function runReminders(env: Env, db: D1Database): Promise<{ sent: nu
         const eta = cfg.kind === '48h' ? 'in 48 hours' : 'in 24 hours';
 
         await sendEmail(env, {
-          to: row.speaker_email,
+          to: row.host_email,
           subject: `Reminder · ${row.episode_title} (${eta})`,
           text: `You're up ${eta} on ${row.slate_name}: "${row.episode_title}"
 
@@ -80,7 +80,7 @@ ${row.topic_description ? `<p>${escapeHtml(row.topic_description)}</p>` : ''}
 
         await db.prepare(
           'INSERT INTO sent_reminders (slot_id, reminder_kind, recipient_user_id, sent_at) VALUES (?, ?, ?, ?)',
-        ).bind(row.slot_id, cfg.kind, row.speaker_id, t).run();
+        ).bind(row.slot_id, cfg.kind, row.host_id, t).run();
         sent++;
       } catch (err) {
         console.error('[reminders] failed for', row.slot_id, err);

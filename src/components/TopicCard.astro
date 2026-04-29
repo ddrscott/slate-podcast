@@ -1,6 +1,6 @@
 ---
-// Card representation of a suggestion. Used on the slate index "Top topic
-// suggestions" section and the full /[slate]/suggestions list. State is
+// Card representation of a topic. Used on the slate index "Top topic
+// topics" section and the full /[slate]/topics list. State is
 // encoded by treatment, not by a label badge:
 //   - open      → white card, full-weight title, primary action button
 //   - scheduled → muted base-200 card, deemphasized title, scheduled time inline,
@@ -9,7 +9,7 @@
 
 import { displayName } from '@/lib/people';
 
-export interface CardSuggestion {
+export interface CardTopic {
   id: string;
   title: string;
   description: string | null;
@@ -19,18 +19,18 @@ export interface CardSuggestion {
   has_voted: number | null;
   scheduled_slot_id: string | null;
   scheduled_start: number | null;
-  scheduled_speaker_id: string | null;
-  scheduled_speaker_email: string | null;
-  scheduled_speaker_display_name?: string | null;
+  scheduled_host_id: string | null;
+  scheduled_host_email: string | null;
+  scheduled_host_display_name?: string | null;
   author_email?: string | null;
   author_display_name?: string | null;
   tags?: string | null;
 }
 
 interface Props {
-  s: CardSuggestion;
+  s: CardTopic;
   isMember: boolean;
-  isSpeaker: boolean;
+  isHost: boolean;
   currentUserId: string | undefined;
   isAdmin: boolean;
   fmtSched: Intl.DateTimeFormat;
@@ -39,7 +39,7 @@ interface Props {
 }
 
 const {
-  s, isMember, isSpeaker, currentUserId, isAdmin, fmtSched,
+  s, isMember, isHost, currentUserId, isAdmin, fmtSched,
   showAuthor = false, showTags = false,
 } = Astro.props;
 
@@ -47,7 +47,7 @@ const isOpen = s.status === 'open';
 const isScheduled = s.status === 'scheduled';
 const isArchived = s.status === 'archived';
 const canUnschedule = isScheduled && !!s.scheduled_slot_id &&
-  (s.scheduled_speaker_id === currentUserId || isAdmin);
+  (s.scheduled_host_id === currentUserId || isAdmin);
 
 const cardBg = isScheduled ? 'bg-base-200/40' : 'bg-base-100';
 const cardBorder = s.has_voted
@@ -61,11 +61,11 @@ const tagList = s.tags ? s.tags.split(',').map(t => t.trim()).filter(Boolean) : 
 const hasMeta = (showAuthor && s.author_email) ||
   (showTags && tagList.length > 0) ||
   (isScheduled && s.scheduled_start);
-const hasActions = (isSpeaker && isOpen) || canUnschedule;
+const hasActions = (isHost && isOpen) || canUnschedule;
 
-const speakerName = displayName({
-  display_name: s.scheduled_speaker_display_name ?? null,
-  email: s.scheduled_speaker_email,
+const hostName = displayName({
+  display_name: s.scheduled_host_display_name ?? null,
+  email: s.scheduled_host_email,
 });
 const authorName = displayName({
   display_name: s.author_display_name ?? null,
@@ -74,10 +74,10 @@ const authorName = displayName({
 ---
 
 <article
-  data-suggestion-card={s.id}
-  data-suggestion-status={s.status}
-  data-suggestion-title={s.title}
-  class={`suggestion-card rounded border ${cardBorder} ${cardBg} transition-colors cursor-pointer hover:border-base-content/30`}
+  data-topic-card={s.id}
+  data-topic-status={s.status}
+  data-topic-title={s.title}
+  class={`topic-card rounded border ${cardBorder} ${cardBg} transition-colors cursor-pointer hover:border-base-content/30`}
   role="button"
   tabindex="0"
   aria-label={`Open details for ${s.title}`}
@@ -115,8 +115,8 @@ const authorName = displayName({
           {isScheduled && s.scheduled_start && (
             <span>{fmtSched.format(new Date(s.scheduled_start * 1000))}</span>
           )}
-          {isScheduled && s.scheduled_speaker_email && (
-            <span class="opacity-80">→ {speakerName}</span>
+          {isScheduled && s.scheduled_host_email && (
+            <span class="opacity-80">→ {hostName}</span>
           )}
           {showAuthor && s.author_email && (
             <span>{authorName}</span>
@@ -129,11 +129,11 @@ const authorName = displayName({
 
       {hasActions && (
         <div data-card-actions class="mt-3 flex items-center gap-3">
-          {isSpeaker && isOpen && (
+          {isHost && isOpen && (
             <button
               class="schedule-trigger btn btn-sm btn-primary"
-              data-suggestion-id={s.id}
-              data-suggestion-title={s.title}
+              data-topic-id={s.id}
+              data-topic-title={s.title}
             >
               Claim &amp; schedule
             </button>
@@ -142,7 +142,7 @@ const authorName = displayName({
             <button
               class="unschedule-trigger text-xs opacity-60 hover:opacity-100 hover:text-error transition-colors px-2 py-1 -mx-2"
               data-slot-id={s.scheduled_slot_id}
-              data-suggestion-title={s.title}
+              data-topic-title={s.title}
             >
               Unschedule
             </button>

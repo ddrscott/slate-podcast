@@ -30,16 +30,16 @@ src/
 │   │   ├── slot/[id].astro                      Slot detail + claim + notes
 │   │   ├── day/[date].astro                     Multi-slot day view
 │   │   ├── join.astro                           Join as Member
-│   │   ├── suggest.astro                        Submit suggestion
-│   │   ├── suggestions.astro                    Suggestion pool browser
+│   │   ├── suggest.astro                        Submit topic
+│   │   ├── topics.astro                    Topic pool browser
 │   │   ├── activity.astro                       Per-slate activity feed
-│   │   └── admin/                               Speaker/App-Admin only
+│   │   └── admin/                               Host/App-Admin only
 │   │       ├── index.astro                      Slate admin dashboard
-│   │       ├── people.astro                     Member ↔ Speaker promotions
+│   │       ├── people.astro                     Member ↔ Host promotions
 │   │       ├── rules.astro                      Scheduling rules CRUD
 │   │       ├── slots.astro                      AG Grid sheet view
 │   │       ├── settings.astro                   Slate name/slug/timezone/visibility
-│   │       └── suggestions.astro                Suggestion moderation
+│   │       └── topics.astro                Topic moderation
 │   │
 │   └── api/                                     JSON endpoints (Astro endpoints)
 │       ├── auth/{callback,sign-out}.ts          Receives JWT from auth.ljs.app; clears cookie
@@ -49,27 +49,27 @@ src/
 │       ├── slates/[id].ts                       Update slate
 │       ├── slates/[id]/join.ts                  Member self-join
 │       ├── slates/[id]/open-slots.ts            JSON list of open slots
-│       ├── slates/[id]/speakers.ts              List speakers
-│       ├── slates/[id]/speakers/[user_id].ts    Promote / demote
-│       ├── slates/[id]/suggestions.ts           Create suggestion
-│       ├── slates/[id]/suggestions/check.ts     Fingerprint dedupe check
+│       ├── slates/[id]/hosts.ts              List hosts
+│       ├── slates/[id]/hosts/[user_id].ts    Promote / demote
+│       ├── slates/[id]/topics.ts           Create topic
+│       ├── slates/[id]/topics/check.ts     Fingerprint dedupe check
 │       ├── slates/[id]/activity/mark-read.ts    Watermark
 │       ├── slates/[id]/admin/{rules,slots,bulk-edit,regenerate-slots,export.csv}.ts
-│       ├── slots/[id]/{claim-and-schedule,assign-speaker,topic,show-notes,assets,promo-image}.ts
+│       ├── slots/[id]/{claim-and-schedule,assign-host,topic,show-notes,assets,promo-image}.ts
 │       ├── slot-assets/[id].ts                  Update / delete asset
-│       ├── suggestions/[id]/vote.ts             Toggle upvote
-│       └── admin/{rules,slots,suggestions}/[id]…   Cross-slate admin actions
+│       ├── topics/[id]/vote.ts             Toggle upvote
+│       └── admin/{rules,slots,topics}/[id]…   Cross-slate admin actions
 
 ├── components/
 │   ├── ScheduleGrid.tsx                Year-view month grid (public)
-│   ├── ScheduleSuggestionPanel.astro   Claim-and-schedule UI
+│   ├── ScheduleTopicPanel.astro   Claim-and-schedule UI
 │   ├── SlotsAGGrid.tsx                 Excel-like admin slot grid
 │   ├── ShowNotesEditor.tsx             Markdown editor + asset CRUD
 │   └── ShowNotesView.tsx               Sanitized public render
 
 └── lib/
     ├── auth.ts                JWT verify, signInUrl, cookie helpers (no DB sessions)
-    ├── access.ts              requireUser / requireSpeakerOnSlate / HttpError / jsonOk/jsonError
+    ├── access.ts              requireUser / requireHostOnSlate / HttpError / jsonOk/jsonError
     ├── activity.ts            logActivity helper + ActivityKind union
     ├── analytics.ts           Plausible event helper
     ├── db.ts                  D1 helpers, ID generation, slugify, fingerprint
@@ -82,7 +82,7 @@ scripts/
 ├── test-recurrence.mjs        Smoke test for the recurrence engine
 ├── test-auth-callback.mjs     Smoke test for /api/auth/callback
 ├── test-v2-flow.mjs           End-to-end smoke test for the v2 flow
-└── seed-ar-suggestions.mjs    One-shot seed for the AR Daily slate
+└── seed-ar-topics.mjs    One-shot seed for the AR Daily slate
 
 docs/                          You are here.
 ├── tutorials/                 Learning-oriented

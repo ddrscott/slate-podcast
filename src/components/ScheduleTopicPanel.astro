@@ -1,8 +1,8 @@
 ---
-// Side-panel (desktop) / bottom-sheet (mobile) for Speakers to claim a slot
-// AND marry a suggestion to it in one click. Embedded once per page; opens
-// when any element dispatches a `schedule-suggestion` custom event with
-// { detail: { suggestionId, suggestionTitle } }.
+// Side-panel (desktop) / bottom-sheet (mobile) for Hosts to claim a slot
+// AND marry a topic to it in one click. Embedded once per page; opens
+// when any element dispatches a `schedule-topic` custom event with
+// { detail: { topicId, topicTitle } }.
 //
 // Embedding pages should ALSO pass the slate context (slug + id) so the
 // panel knows which slate's open slots to fetch.
@@ -37,7 +37,7 @@ const { slate } = Astro.props;
     <header class="flex items-start gap-3 p-4 border-b border-base-300">
       <div class="flex-1 min-w-0">
         <p class="font-mono text-xs text-signal">// claim &amp; schedule</p>
-        <h2 id="schedule-panel-title" class="font-bold text-lg mt-1 truncate" data-suggestion-title>
+        <h2 id="schedule-panel-title" class="font-bold text-lg mt-1 truncate" data-topic-title>
           (loading…)
         </h2>
       </div>
@@ -118,7 +118,7 @@ const { slate } = Astro.props;
     const slateSlug = root.dataset.slateSlug;
     const pane = document.getElementById('schedule-panel-pane');
     const backdrop = document.getElementById('schedule-panel-backdrop');
-    const titleEl = root.querySelector('[data-suggestion-title]');
+    const titleEl = root.querySelector('[data-topic-title]');
     const grid = document.getElementById('cal-grid');
     const monthLabel = document.getElementById('cal-month-label');
     const prevBtn = document.getElementById('cal-prev');
@@ -131,7 +131,7 @@ const { slate } = Astro.props;
     const status = document.getElementById('schedule-panel-status');
     const closeBtn = document.getElementById('schedule-panel-close');
 
-    let activeSuggestionId = null;
+    let activeTopicId = null;
     let cachedPayload = null; // { timezone, slots: [...] }
     let slotsByDay = new Map(); // ISO 'YYYY-MM-DD' (slate tz) → slot[]
     let monthRange = []; // [{y, m}] available months
@@ -303,9 +303,9 @@ const { slate } = Astro.props;
       if (!isDesktop()) dayDetail.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    async function open(suggestionId, suggestionTitle) {
-      activeSuggestionId = suggestionId;
-      titleEl.textContent = suggestionTitle ?? 'Schedule…';
+    async function open(topicId, topicTitle) {
+      activeTopicId = topicId;
+      titleEl.textContent = topicTitle ?? 'Schedule…';
       setStatus('');
       dayDetail.classList.add('hidden');
       grid.innerHTML = '';
@@ -317,7 +317,7 @@ const { slate } = Astro.props;
       lockBodyScroll();
 
       // Always re-fetch — the page can be edited from elsewhere (other
-      // speakers, the same user via the unschedule control on a card),
+      // hosts, the same user via the unschedule control on a card),
       // so a stale cache is worse than a tiny extra request.
       loading.classList.remove('hidden');
       try {
@@ -351,14 +351,14 @@ const { slate } = Astro.props;
       const res = await fetch(`/api/slots/${slotId}/claim-and-schedule`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ suggestion_id: activeSuggestionId }),
+        body: JSON.stringify({ topic_id: activeTopicId }),
       });
       if (res.ok) {
         const body = await res.json();
-        if (window.plausible) window.plausible('Schedule Suggestion', { props: { slate: slateSlug } });
+        if (window.plausible) window.plausible('Schedule Topic', { props: { slate: slateSlug } });
 
         // Tell the calendar grid to flip this slot to confirmed (and pick
-        // up the suggestion's title for the cell hint).
+        // up the topic's title for the cell hint).
         window.dispatchEvent(new CustomEvent('slot-updated', {
           detail: {
             slotId,
@@ -368,14 +368,14 @@ const { slate } = Astro.props;
         }));
 
         // Tell the topic pane to transition this card from open → scheduled.
-        window.dispatchEvent(new CustomEvent('suggestion-scheduled', {
+        window.dispatchEvent(new CustomEvent('topic-scheduled', {
           detail: {
-            suggestionId: activeSuggestionId,
+            topicId: activeTopicId,
             slotId,
             startTime: body.start_time,
-            speakerId: body.speaker_id,
-            speakerEmail: body.speaker_email,
-            speakerName: body.speaker_display_name || (body.speaker_email ?? '').split('@')[0],
+            hostId: body.host_id,
+            hostEmail: body.host_email,
+            hostName: body.host_display_name || (body.host_email ?? '').split('@')[0],
           },
         }));
 
@@ -394,9 +394,9 @@ const { slate } = Astro.props;
     prevBtn.addEventListener('click', () => { if (viewIndex > 0) { viewIndex--; renderMonth(); } });
     nextBtn.addEventListener('click', () => { if (viewIndex < monthRange.length - 1) { viewIndex++; renderMonth(); } });
 
-    window.addEventListener('schedule-suggestion', (e) => {
+    window.addEventListener('schedule-topic', (e) => {
       const detail = e.detail ?? {};
-      open(detail.suggestionId, detail.suggestionTitle);
+      open(detail.topicId, detail.topicTitle);
     });
     closeBtn.addEventListener('click', close);
     backdrop.addEventListener('click', close);

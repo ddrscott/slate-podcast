@@ -21,7 +21,7 @@ const memberships = await db.prepare(
    FROM slate_members m
    JOIN slates s ON s.id = m.slate_id
    JOIN users u ON u.id = m.user_id
-   ORDER BY s.name, (m.role = 'speaker') DESC, u.email`,
+   ORDER BY s.name, (m.role = 'host') DESC, u.email`,
 ).all<any>();
 
 const allUsers = await db.prepare('SELECT id, email FROM users ORDER BY email').all<{ id: string; email: string }>();
@@ -39,11 +39,11 @@ for (const m of memberships.results) {
   <section class="py-8 max-w-4xl">
     <p class="font-mono text-sm text-signal mb-1">// app admin</p>
     <h1 class="text-2xl font-bold">People</h1>
-    <p class="text-sm opacity-75 mt-1 mb-6">Promote any user to Speaker on any slate. Only App Admins see this page.</p>
+    <p class="text-sm opacity-75 mt-1 mb-6">Promote any user to Host on any slate. Only App Admins see this page.</p>
 
     <div class="card bg-base-200 border border-base-300 mb-8">
       <div class="card-body">
-        <h2 class="card-title text-base">Promote to Speaker</h2>
+        <h2 class="card-title text-base">Promote to Host</h2>
         <form id="promote-form" class="grid md:grid-cols-3 gap-3 items-end">
           <label class="form-control">
             <span class="label-text">Slate</span>
@@ -73,9 +73,9 @@ for (const m of memberships.results) {
         <ul class="mt-2 space-y-1">
           {(bySlate.get(s.id) ?? []).map(m => (
             <li class="flex items-center gap-2 text-sm p-2 border border-base-300 rounded">
-              <span class={`badge badge-xs ${m.role === 'speaker' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>
+              <span class={`badge badge-xs ${m.role === 'host' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>
               <span class="flex-1 truncate"><span>{displayName(m)}</span> <span class="ml-2 text-xs opacity-50 font-mono">{m.email}</span></span>
-              {m.role === 'speaker' && (
+              {m.role === 'host' && (
                 <button class="demote btn btn-xs btn-ghost text-error border border-base-300"
                         data-slate-id={m.slate_id} data-user-id={m.user_id}>demote</button>
               )}
@@ -100,7 +100,7 @@ for (const m of memberships.results) {
       const status = document.getElementById('promote-status');
       status.classList.remove('hidden', 'text-error', 'text-success');
       status.textContent = 'Promoting…';
-      const res = await fetch(`/api/slates/${data.get('slate_id')}/speakers`, {
+      const res = await fetch(`/api/slates/${data.get('slate_id')}/hosts`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ email: data.get('email') }),
@@ -112,7 +112,7 @@ for (const m of memberships.results) {
     document.querySelectorAll('.promote-quick').forEach(b => {
       b.addEventListener('click', async () => {
         b.disabled = true;
-        const res = await fetch(`/api/slates/${b.dataset.slateId}/speakers`, {
+        const res = await fetch(`/api/slates/${b.dataset.slateId}/hosts`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ user_id: b.dataset.userId }),
@@ -124,9 +124,9 @@ for (const m of memberships.results) {
 
     document.querySelectorAll('.demote').forEach(b => {
       b.addEventListener('click', async () => {
-        if (!confirm("Demote this Speaker back to Member?")) return;
+        if (!confirm("Demote this Host back to Member?")) return;
         b.disabled = true;
-        const res = await fetch(`/api/slates/${b.dataset.slateId}/speakers/${b.dataset.userId}`, { method: 'DELETE' });
+        const res = await fetch(`/api/slates/${b.dataset.slateId}/hosts/${b.dataset.userId}`, { method: 'DELETE' });
         if (res.ok) location.reload();
         else { b.disabled = false; alert((await res.json().catch(() => ({}))).error ?? res.status); }
       });

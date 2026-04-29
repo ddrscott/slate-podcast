@@ -1,13 +1,13 @@
 import type { APIRoute } from 'astro';
 import { getDb, now, randomId } from '@/lib/db';
-import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate } from '@/lib/access';
+import { HttpError, jsonError, jsonOk, requireHostOnSlate } from '@/lib/access';
 
 export const prerender = false;
 
 export const GET: APIRoute = async (ctx) => {
   try {
     const slateId = ctx.params.id!;
-    await requireSpeakerOnSlate(ctx, slateId);
+    await requireHostOnSlate(ctx, slateId);
     const db = getDb(ctx);
     const { results } = await db.prepare(
       `SELECT id, name, cadence, days_of_week, nth_weekday, time_of_day, duration_minutes,
@@ -21,7 +21,7 @@ export const GET: APIRoute = async (ctx) => {
 export const POST: APIRoute = async (ctx) => {
   try {
     const slateId = ctx.params.id!;
-    await requireSpeakerOnSlate(ctx, slateId);
+    await requireHostOnSlate(ctx, slateId);
 
     const body = await ctx.request.json() as {
       name?: string;

@@ -5,7 +5,7 @@ import { Enqueue } from '@/lib/activity';
 
 export const prerender = false;
 
-// List suggestions for a slate (signed-in members + speakers see all open ones,
+// List topics for a slate (signed-in members + hosts see all open ones,
 // can filter by status). Sorted by upvote_count DESC then submitted_at DESC.
 export const GET: APIRoute = async (ctx) => {
   try {
@@ -24,18 +24,18 @@ export const GET: APIRoute = async (ctx) => {
       `SELECT s.id, s.title, s.description, s.url, s.tags, s.status, s.upvote_count,
               s.submitted_at, s.scheduled_slot_id, s.scheduled_at,
               u.email AS author_email
-       FROM suggestions s
+       FROM topics s
        JOIN users u ON u.id = s.author_id
        WHERE ${where}
        ORDER BY s.upvote_count DESC, s.submitted_at DESC`,
     ).bind(...params).all();
 
-    return jsonOk({ suggestions: results });
+    return jsonOk({ topics: results });
   } catch (err) { return jsonError(err); }
 };
 
-// Submit a suggestion. Members + Speakers + App Admins.
-// Duplicate detection: if fingerprint matches an existing suggestion in the
+// Submit a topic. Members + Hosts + App Admins.
+// Duplicate detection: if fingerprint matches an existing topic in the
 // slate, return 409 with the duplicate (unless `?force=1`).
 export const POST: APIRoute = async (ctx) => {
   try {
@@ -63,7 +63,7 @@ export const POST: APIRoute = async (ctx) => {
 
     if (!force) {
       const dup = await db.prepare(
-        `SELECT id, title, upvote_count, status FROM suggestions
+        `SELECT id, title, upvote_count, status FROM topics
          WHERE slate_id = ? AND fingerprint = ? LIMIT 1`,
       ).bind(slateId, fp).first<{ id: string; title: string; upvote_count: number; status: string }>();
       if (dup) {
@@ -73,14 +73,14 @@ export const POST: APIRoute = async (ctx) => {
 
     const id = `sug_${randomId(10)}`;
     await db.prepare(
-      `INSERT INTO suggestions (id, slate_id, author_id, title, description, url, tags,
+      `INSERT INTO topics (id, slate_id, author_id, title, description, url, tags,
                                 status, fingerprint, upvote_count, submitted_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, 0, ?)`,
     ).bind(id, slateId, user.id, title, body.description ?? null, body.url ?? null,
            body.tags ?? null, fp, now()).run();
 
-    await Enqueue.suggestionPosted(ctx, { slateId, actorId: user.id, suggestionId: id, title });
+    await Enqueue.topicPosted(ctx, { slateId, actorId: user.id, topicId: id, title });
 
-    return jsonOk({ suggestion: { id, title, fingerprint: fp } }, 201);
+    return jsonOk({ topic: { id, title, fingerprint: fp } }, 201);
   } catch (err) { return jsonError(err); }
 };

@@ -1,38 +1,38 @@
 # Roles and permissions
 
-Three roles. App-Admin is global; Member and Speaker are per-slate.
+Three roles. App-Admin is global; Member and Host are per-slate.
 
 | Role | Scope | Granted by | Can be revoked? |
 |---|---|---|---|
 | **App-Admin** | All slates | `auth.ljs.app` JWT scope (`admin` or `slate:admin`) | Yes — by editing the user record in `auth.ljs.app` |
-| **Speaker** | One slate | App-Admin, via slate's people page | Yes — same |
+| **Host** | One slate | App-Admin, via slate's people page | Yes — same |
 | **Member** | One slate | Self-service (Join button) | App-Admin can demote to nothing by removing the row |
 
-App-Admins implicitly have Speaker rights on every slate. Speakers implicitly have Member rights.
+App-Admins implicitly have Host rights on every slate. Hosts implicitly have Member rights.
 
 ## Permission matrix
 
-| Action | Member | Speaker | App-Admin |
+| Action | Member | Host | App-Admin |
 |---|:-:|:-:|:-:|
 | View public schedule | ✓ | ✓ | ✓ |
 | View private slate (`is_public = 0`) | ✓ | ✓ | ✓ |
 | Join a slate (Member) | ✓ | — | — |
-| Post a suggestion | ✓ | ✓ | ✓ |
-| Upvote a suggestion | ✓ | ✓ | ✓ |
+| Post a topic | ✓ | ✓ | ✓ |
+| Upvote a topic | ✓ | ✓ | ✓ |
 | Claim a slot | — | ✓ | ✓ |
 | Pick / change a slot's topic | — | ✓ | ✓ |
-| Sub in for another Speaker on a slot | — | ✓ | ✓ |
+| Sub in for another Host on a slot | — | ✓ | ✓ |
 | Write & publish show notes (own slot) | — | ✓ | ✓ |
 | Edit slot status (cancel, reopen) | — | — | ✓ |
 | Edit scheduling rules | — | ✓ | ✓ |
 | Regenerate slots | — | ✓ | ✓ |
 | Bulk-edit slots in the AG Grid view | — | ✓ | ✓ |
-| Promote Member → Speaker | — | ✓ | ✓ |
-| Demote Speaker → Member | — | — | ✓ |
+| Promote Member → Host | — | ✓ | ✓ |
+| Demote Host → Member | — | — | ✓ |
 | Edit slate settings (slug / timezone / visibility) | — | — | ✓ |
 | Create a slate | — | — | ✓ |
-| Archive a suggestion | — | ✓ | ✓ |
-| Edit any user's suggestion | — | — | ✓ |
+| Archive a topic | — | ✓ | ✓ |
+| Edit any user's topic | — | — | ✓ |
 
 ## Where the checks live
 
@@ -41,8 +41,8 @@ App-Admins implicitly have Speaker rights on every slate. Speakers implicitly ha
 ```typescript
 requireUser(ctx)                 // → AuthUser, 401 if no session
 requireAppAdmin(ctx)             // → 403 unless `admin` / `slate:admin` scope
-requireMemberOnSlate(ctx, id)    // → 403 unless Member, Speaker, or App-Admin
-requireSpeakerOnSlate(ctx, id)   // → 403 unless Speaker or App-Admin
+requireMemberOnSlate(ctx, id)    // → 403 unless Member, Host, or App-Admin
+requireHostOnSlate(ctx, id)   // → 403 unless Host or App-Admin
 ```
 
 Throws `HttpError(status, code)`; the caller wraps with `jsonError(err)` to produce the canonical `{ ok: false, error: code }` body.

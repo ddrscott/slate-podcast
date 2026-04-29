@@ -1,0 +1,7 @@
+# Legacy URLs from before the speakers→hosts / suggestions→topics rename.
+# Cloudflare honors this file at the edge. Astro's built-in `redirects` map
+# can't be used here because the Cloudflare adapter appends /index.html to
+# destinations, which breaks redirects to server-rendered pages.
+/:slate/suggest              /:slate/topics/new        301
+/:slate/suggestions          /:slate/topics            301
+/:slate/admin/suggestions    /:slate/admin/topics      301

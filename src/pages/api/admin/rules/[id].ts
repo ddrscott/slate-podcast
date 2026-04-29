@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { getDb } from '@/lib/db';
-import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate } from '@/lib/access';
+import { HttpError, jsonError, jsonOk, requireHostOnSlate } from '@/lib/access';
 
 export const prerender = false;
 
@@ -9,7 +9,7 @@ async function loadRule(ctx: Parameters<APIRoute>[0], ruleId: string) {
   const row = await db.prepare('SELECT id, slate_id FROM slot_rules WHERE id = ?')
     .bind(ruleId).first<{ id: string; slate_id: string }>();
   if (!row) throw new HttpError(404, 'not_found');
-  await requireSpeakerOnSlate(ctx, row.slate_id);
+  await requireHostOnSlate(ctx, row.slate_id);
   return row;
 }
 

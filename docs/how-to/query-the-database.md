@@ -37,15 +37,15 @@ npm run db:query:remote -- "SELECT
     (SELECT count(*) FROM slates) AS slates,
     (SELECT count(*) FROM users) AS users,
     (SELECT count(*) FROM slots) AS slots,
-    (SELECT count(*) FROM suggestions) AS suggestions"
+    (SELECT count(*) FROM topics) AS topics"
 ```
 
 ## Common ad-hoc queries
 
 ```sql
--- All slates with member/speaker counts
+-- All slates with member/host counts
 SELECT s.slug, s.name,
-       sum(case when m.role = 'speaker' then 1 else 0 end) AS speakers,
+       sum(case when m.role = 'host' then 1 else 0 end) AS hosts,
        sum(case when m.role = 'member' then 1 else 0 end) AS members
 FROM slates s
 LEFT JOIN slate_members m ON m.slate_id = s.id
@@ -55,14 +55,14 @@ GROUP BY s.id;
 SELECT sl.start_time, s.name, u.email
 FROM slots sl
 JOIN slates s ON s.id = sl.slate_id
-JOIN users u ON u.id = sl.speaker_id
+JOIN users u ON u.id = sl.host_id
 WHERE sl.status = 'confirmed'
   AND sl.start_time BETWEEN unixepoch() AND unixepoch() + 7*86400
 ORDER BY sl.start_time;
 
--- Top suggestions by upvote
+-- Top topics by upvote
 SELECT title, upvote_count, status
-FROM suggestions
+FROM topics
 WHERE slate_id = '<slate_id>'
 ORDER BY upvote_count DESC LIMIT 20;
 ```

@@ -21,26 +21,26 @@ const memberships = await db.prepare(
   `SELECT s.id, s.slug, s.name, s.description, m.role
    FROM slate_members m JOIN slates s ON s.id = m.slate_id
    WHERE m.user_id = ?
-   ORDER BY (m.role = 'speaker') DESC, m.joined_at DESC`,
+   ORDER BY (m.role = 'host') DESC, m.joined_at DESC`,
 ).bind(user.id).all<{ id: string; slug: string; name: string; description: string | null; role: string }>();
 
-// Upcoming slots the user is the speaker for
+// Upcoming slots the user is the host for
 const upcoming = await db.prepare(
   `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status,
           s.name AS slate_name, s.slug AS slate_slug, s.timezone,
           COALESCE(sl.custom_title, sug.title) AS title
    FROM slots sl
    JOIN slates s ON s.id = sl.slate_id
-   LEFT JOIN suggestions sug ON sug.id = sl.suggestion_id
-   WHERE sl.speaker_id = ? AND sl.start_time >= unixepoch() AND sl.status != 'cancelled'
+   LEFT JOIN topics sug ON sug.id = sl.topic_id
+   WHERE sl.host_id = ? AND sl.start_time >= unixepoch() AND sl.status != 'cancelled'
    ORDER BY sl.start_time LIMIT 8`,
 ).bind(user.id).all<{ id: string; start_time: number; duration_minutes: number; status: string; slate_name: string; slate_slug: string; timezone: string; title: string | null }>();
 
-// Recent suggestions submitted by the user
-const mySuggestions = await db.prepare(
+// Recent topics submitted by the user
+const myTopics = await db.prepare(
   `SELECT sug.id, sug.title, sug.status, sug.upvote_count, sug.submitted_at,
           s.slug AS slate_slug, s.name AS slate_name
-   FROM suggestions sug JOIN slates s ON s.id = sug.slate_id
+   FROM topics sug JOIN slates s ON s.id = sug.slate_id
    WHERE sug.author_id = ? ORDER BY sug.submitted_at DESC LIMIT 8`,
 ).bind(user.id).all<{ id: string; title: string; status: string; upvote_count: number; submitted_at: number; slate_slug: string; slate_name: string }>();
 ---
@@ -106,7 +106,7 @@ const mySuggestions = await db.prepare(
                 <a href={`/${m.slug}`} class="block p-3 border border-base-300 rounded hover:border-signal">
                   <div class="flex items-center justify-between">
                     <span class="font-semibold">{m.name}</span>
-                    <span class={`badge badge-xs ${m.role === 'speaker' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>
+                    <span class={`badge badge-xs ${m.role === 'host' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>
                   </div>
                   <div class="text-xs opacity-60 font-mono">/{m.slug}</div>
                 </a>
@@ -144,12 +144,12 @@ const mySuggestions = await db.prepare(
     </div>
 
     <div class="mt-10">
-      <h2 class="font-semibold text-lg mb-3">My recent suggestions</h2>
-      {mySuggestions.results.length === 0 ? (
-        <p class="text-sm opacity-60">You haven't submitted any suggestions yet.</p>
+      <h2 class="font-semibold text-lg mb-3">My recent topics</h2>
+      {myTopics.results.length === 0 ? (
+        <p class="text-sm opacity-60">You haven't submitted any topics yet.</p>
       ) : (
         <ul class="space-y-2">
-          {mySuggestions.results.map(s => (
+          {myTopics.results.map(s => (
             <li class="p-3 border border-base-300 rounded">
               <div class="flex items-center gap-2 text-xs">
                 <a href={`/${s.slate_slug}`} class="link">{s.slate_name}</a>

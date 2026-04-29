@@ -21,11 +21,11 @@ The first time you visit a slate you're not a member of, you'll see a **Join** b
 
 You're now a **Member**. That means:
 
-- You can post episode suggestions.
-- You can upvote other people's suggestions.
+- You can post episode topics.
+- You can upvote other people's topics.
 - You can see the schedule.
 
-You can't claim slots yet — that's the Speaker role, and only an App-Admin can promote you.
+You can't claim slots yet — that's the Host role, and only an App-Admin can promote you.
 
 ## 3. Suggest an episode
 
@@ -37,27 +37,27 @@ Fill in:
 - **Description** — context, talking points, links. Optional.
 - **URL** — one canonical link if there is one (article, video, etc.). Optional.
 
-Submit. The form will warn you if your title fingerprints to an existing suggestion (case + punctuation insensitive) — go upvote that one instead.
+Submit. The form will warn you if your title fingerprints to an existing topic (case + punctuation insensitive) — go upvote that one instead.
 
-## 4. Upvote suggestions
+## 4. Upvote topics
 
-Open the **Suggestions** tab. Click the upvote arrow on anything you'd like to hear discussed. The list reorders by vote count.
+Open the **Topics** tab. Click the upvote arrow on anything you'd like to hear discussed. The list reorders by vote count.
 
-This is how Speakers decide what to schedule next.
+This is how Hosts decide what to schedule next.
 
-## 5. (Speakers only) Claim a slot
+## 5. (Hosts only) Claim a slot
 
-Once an App-Admin promotes you to Speaker, you can do this:
+Once an App-Admin promotes you to Host, you can do this:
 
 1. Open the slate's main schedule grid. Open slots are blue.
 2. Click an open slot.
 3. On the slot page, click **Claim & schedule**.
-4. Pick a suggestion from the pool (or write a custom title).
+4. Pick a topic from the pool (or write a custom title).
 5. Confirm.
 
 The slot is now `confirmed` and yours. You'll get reminder emails 48h and 24h before showtime.
 
-## 6. (Speakers only) Write show notes
+## 6. (Hosts only) Write show notes
 
 After you record, open your slot and click **Edit show notes**. The markdown editor supports:
 

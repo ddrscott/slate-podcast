@@ -21,8 +21,8 @@ const isAdmin = isAppAdmin(user.scopes);
 const member = await db.prepare(
   'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
 ).bind(slate.id, user.id).first<{ role: string }>();
-const isSpeaker = isAdmin || member?.role === 'speaker';
-if (!isSpeaker) return new Response('Speaker required', { status: 403 });
+const isHost = isAdmin || member?.role === 'host';
+if (!isHost) return new Response('Host required', { status: 403 });
 
 const counts = await db.prepare(
   `SELECT
@@ -31,9 +31,9 @@ const counts = await db.prepare(
      (SELECT COUNT(*) FROM slots WHERE slate_id = ? AND status = 'open') AS open_slots,
      (SELECT COUNT(*) FROM slots WHERE slate_id = ? AND status = 'confirmed') AS confirmed_slots,
      (SELECT COUNT(*) FROM slots WHERE slate_id = ? AND status = 'assigned') AS assigned_slots,
-     (SELECT COUNT(*) FROM suggestions WHERE slate_id = ? AND status = 'open') AS open_suggestions,
+     (SELECT COUNT(*) FROM topics WHERE slate_id = ? AND status = 'open') AS open_topics,
      (SELECT COUNT(*) FROM slate_members WHERE slate_id = ?) AS members,
-     (SELECT COUNT(*) FROM slate_members WHERE slate_id = ? AND role = 'speaker') AS speakers`,
+     (SELECT COUNT(*) FROM slate_members WHERE slate_id = ? AND role = 'host') AS hosts`,
 ).bind(slate.id, slate.id, slate.id, slate.id, slate.id, slate.id, slate.id, slate.id)
   .first<Record<string, number>>();
 
@@ -43,17 +43,17 @@ const stats = [
   { label: 'Open', value: counts?.open_slots ?? 0 },
   { label: 'Assigned', value: counts?.assigned_slots ?? 0 },
   { label: 'Confirmed', value: counts?.confirmed_slots ?? 0 },
-  { label: 'Open suggestions', value: counts?.open_suggestions ?? 0 },
+  { label: 'Open topics', value: counts?.open_topics ?? 0 },
   { label: 'Members', value: counts?.members ?? 0 },
-  { label: 'Speakers', value: counts?.speakers ?? 0 },
+  { label: 'Hosts', value: counts?.hosts ?? 0 },
 ];
 
 const links = [
   { href: `/${slug}/activity`, title: 'Activity log', subtitle: 'What changed since you last looked' },
   { href: `/${slug}/admin/rules`, title: 'Scheduling rules', subtitle: 'Define when slots happen' },
   { href: `/${slug}/admin/slots`, title: 'Slots (sheet view)', subtitle: 'Bare-metal grid edit' },
-  { href: `/${slug}/admin/suggestions`, title: 'Moderate suggestions', subtitle: 'Archive duplicates / spam' },
-  { href: `/${slug}/admin/people`, title: 'People', subtitle: 'See members and speakers' },
+  { href: `/${slug}/admin/topics`, title: 'Moderate topics', subtitle: 'Archive duplicates / spam' },
+  { href: `/${slug}/admin/people`, title: 'People', subtitle: 'See members and hosts' },
   { href: `/${slug}/admin/settings`, title: 'Slate settings', subtitle: 'Name, slug, timezone, visibility' },
 ];
 ---

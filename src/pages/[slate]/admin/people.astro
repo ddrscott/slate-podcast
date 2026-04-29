@@ -21,8 +21,8 @@ const isAdmin = isAppAdmin(user.scopes);
 const member = await db.prepare(
   'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
 ).bind(slate.id, user.id).first<{ role: string }>();
-if (!isAdmin && member?.role !== 'speaker') {
-  return new Response('Speaker required', { status: 403 });
+if (!isAdmin && member?.role !== 'host') {
+  return new Response('Host required', { status: 403 });
 }
 
 const members = await db.prepare(
@@ -30,7 +30,7 @@ const members = await db.prepare(
           u.email, u.display_name
    FROM slate_members m JOIN users u ON u.id = m.user_id
    WHERE m.slate_id = ?
-   ORDER BY (m.role = 'speaker') DESC, m.joined_at DESC`,
+   ORDER BY (m.role = 'host') DESC, m.joined_at DESC`,
 ).bind(slate.id).all<any>();
 ---
 
@@ -43,7 +43,7 @@ const members = await db.prepare(
         <p class="text-xs opacity-60 mt-1">
           {isAdmin
             ? 'You can promote and demote here, or use the global admin page for cross-slate management.'
-            : 'Any Speaker can promote a Member. Demotion is App Admin only.'}
+            : 'Any Host can promote a Member. Demotion is App Admin only.'}
         </p>
       </div>
       {isAdmin && <a href="/admin/people" class="btn btn-sm btn-ghost border border-base-300">Cross-slate ↗</a>}
@@ -59,14 +59,14 @@ const members = await db.prepare(
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="font-semibold">{displayName(m)}</span>
                 <span class="text-xs opacity-50 font-mono">{m.email}</span>
-                <span class={`badge badge-xs ${m.role === 'speaker' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>
+                <span class={`badge badge-xs ${m.role === 'host' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>
               </div>
             </div>
             {m.role === 'member' && (
               <button data-uid={m.user_id} data-action="promote"
                       class="member-action btn btn-xs btn-primary">promote</button>
             )}
-            {isAdmin && m.role === 'speaker' && (
+            {isAdmin && m.role === 'host' && (
               <button data-uid={m.user_id} data-action="demote"
                       class="member-action btn btn-xs btn-ghost border border-base-300 text-error">demote</button>
             )}
@@ -82,11 +82,11 @@ const members = await db.prepare(
         const { uid, action } = b.dataset;
         b.disabled = true;
         const res = action === 'promote'
-          ? await fetch(`/api/slates/${slateId}/speakers`, {
+          ? await fetch(`/api/slates/${slateId}/hosts`, {
               method: 'POST', headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ user_id: uid }),
             })
-          : await fetch(`/api/slates/${slateId}/speakers/${uid}`, { method: 'DELETE' });
+          : await fetch(`/api/slates/${slateId}/hosts/${uid}`, { method: 'DELETE' });
         if (res.ok) location.reload();
         else { b.disabled = false; alert((await res.json().catch(() => ({}))).error ?? res.status); }
       });

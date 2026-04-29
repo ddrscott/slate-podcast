@@ -1,21 +1,21 @@
 ---
-// Side-panel (desktop) / bottom-sheet (mobile) showing a single suggestion's
+// Side-panel (desktop) / bottom-sheet (mobile) showing a single topic's
 // full detail. Embedded once per page; opens when any element dispatches a
-// `view-suggestion` custom event with { detail: { suggestionId } }.
+// `view-topic` custom event with { detail: { topicId } }.
 //
-// Listens to `suggestion-scheduled` / `suggestion-unscheduled` events so its
-// own state stays in sync if the user takes an action on the same suggestion
+// Listens to `topic-scheduled` / `topic-unscheduled` events so its
+// own state stays in sync if the user takes an action on the same topic
 // from elsewhere on the page (or from inside the panel).
 
 interface Props {
   slate: { id: string; slug: string; name: string; timezone: string };
   isMember: boolean;
-  isSpeaker: boolean;
+  isHost: boolean;
   isAdmin: boolean;
   currentUserId?: string;
 }
 
-const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
+const { slate, isMember, isHost, isAdmin, currentUserId } = Astro.props;
 ---
 
 <div
@@ -65,7 +65,7 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
   is:inline
   define:vars={{
     isMember,
-    isSpeaker,
+    isHost,
     isAdmin,
     currentUserId: currentUserId ?? null,
   }}
@@ -125,8 +125,8 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
       year: 'numeric', hour: 'numeric', minute: '2-digit',
     });
 
-    async function open(suggestionId) {
-      activeId = suggestionId;
+    async function open(topicId) {
+      activeId = topicId;
       titleEl.textContent = '…';
       stateLabel.textContent = '// loading';
       body.innerHTML = '<p class="text-sm opacity-60">Loading…</p>';
@@ -138,15 +138,15 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
       lockBodyScroll();
 
       try {
-        const res = await fetch(`/api/suggestions/${suggestionId}`);
+        const res = await fetch(`/api/topics/${topicId}`);
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error ?? `status ${res.status}`);
         }
-        const { suggestion } = await res.json();
-        if (activeId === suggestionId) render(suggestion);
+        const { topic } = await res.json();
+        if (activeId === topicId) render(topic);
       } catch (err) {
-        body.innerHTML = `<p class="text-sm text-error">Couldn't load suggestion: ${escapeHtml(err.message ?? '')}</p>`;
+        body.innerHTML = `<p class="text-sm text-error">Couldn't load topic: ${escapeHtml(err.message ?? '')}</p>`;
       }
     }
 
@@ -172,7 +172,7 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
         : `// ${s.status}`;
 
       const canUnschedule = isScheduled && s.scheduled &&
-        (s.scheduled.speaker_id === currentUserId || isAdmin);
+        (s.scheduled.host_id === currentUserId || isAdmin);
 
       // ── Vote + meta header
       const voteBlock = isMember ? `
@@ -205,7 +205,7 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
           <p class="font-mono text-xs text-signal">// scheduled for</p>
           <p class="font-semibold">${escapeHtml(fmtSched.format(new Date(s.scheduled.start_time * 1000)))}</p>
           <p class="text-xs opacity-70 font-mono">${escapeHtml(slateTz)} · ${s.scheduled.duration_minutes}min</p>
-          ${s.scheduled.speaker_name ? `<p class="text-sm">Speaker: <span class="opacity-80">${escapeHtml(s.scheduled.speaker_name)}</span></p>` : ''}
+          ${s.scheduled.host_name ? `<p class="text-sm">Host: <span class="opacity-80">${escapeHtml(s.scheduled.host_name)}</span></p>` : ''}
           <p class="pt-1">
             <a href="/${escapeHtml(slateSlug)}/slot/${escapeHtml(s.scheduled.slot_id)}" class="text-sm link">View slot details →</a>
           </p>
@@ -214,11 +214,11 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
 
       // ── Action row
       const actions = [];
-      if (isSpeaker && isOpen) {
+      if (isHost && isOpen) {
         actions.push(`
           <button type="button" id="dp-claim" class="btn btn-primary"
-                  data-suggestion-id="${escapeHtml(s.id)}"
-                  data-suggestion-title="${escapeHtml(s.title)}">
+                  data-topic-id="${escapeHtml(s.id)}"
+                  data-topic-title="${escapeHtml(s.title)}">
             Claim &amp; schedule
           </button>
         `);
@@ -227,7 +227,7 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
         actions.push(`
           <button type="button" id="dp-unschedule"
                   data-slot-id="${escapeHtml(s.scheduled.slot_id)}"
-                  data-suggestion-title="${escapeHtml(s.title)}"
+                  data-topic-title="${escapeHtml(s.title)}"
                   class="text-sm opacity-70 hover:opacity-100 hover:text-error transition-colors">
             Unschedule
           </button>
@@ -258,7 +258,7 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
       const voteBtn = body.querySelector('#dp-vote');
       voteBtn?.addEventListener('click', async () => {
         voteBtn.disabled = true;
-        const res = await fetch(`/api/suggestions/${voteBtn.dataset.id}/vote`, { method: 'POST' });
+        const res = await fetch(`/api/topics/${voteBtn.dataset.id}/vote`, { method: 'POST' });
         if (res.ok) {
           const b = await res.json();
           const voted = !!b.has_voted;
@@ -272,7 +272,7 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
           count.textContent = b.upvote_count;
           // Mirror the change on the underlying card so closing the panel
           // shows the same state
-          const card = document.querySelector(`[data-suggestion-card="${voteBtn.dataset.id}"]`);
+          const card = document.querySelector(`[data-topic-card="${voteBtn.dataset.id}"]`);
           if (card) {
             card.classList.toggle('border-signal', voted);
             card.classList.toggle('border-base-300', !voted);
@@ -298,10 +298,10 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
         // Close the detail panel and let the schedule panel take over.
         close();
         setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('schedule-suggestion', {
+          window.dispatchEvent(new CustomEvent('schedule-topic', {
             detail: {
-              suggestionId: claimBtn.dataset.suggestionId,
-              suggestionTitle: claimBtn.dataset.suggestionTitle,
+              topicId: claimBtn.dataset.topicId,
+              topicTitle: claimBtn.dataset.topicTitle,
             },
           }));
         }, 220);
@@ -309,7 +309,7 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
 
       const unBtn = body.querySelector('#dp-unschedule');
       unBtn?.addEventListener('click', async () => {
-        if (!confirm(`Unschedule "${unBtn.dataset.suggestionTitle}"? The slot goes back to open.`)) return;
+        if (!confirm(`Unschedule "${unBtn.dataset.topicTitle}"? The slot goes back to open.`)) return;
         unBtn.disabled = true;
         const slotId = unBtn.dataset.slotId;
         const res = await fetch(`/api/slots/${slotId}/claim-and-schedule`, { method: 'DELETE' });
@@ -318,9 +318,9 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
           window.dispatchEvent(new CustomEvent('slot-updated', {
             detail: { slotId, status: 'open', title: null },
           }));
-          if (data.freed_suggestion_id) {
-            window.dispatchEvent(new CustomEvent('suggestion-unscheduled', {
-              detail: { suggestionId: data.freed_suggestion_id },
+          if (data.freed_topic_id) {
+            window.dispatchEvent(new CustomEvent('topic-unscheduled', {
+              detail: { topicId: data.freed_topic_id },
             }));
           }
           // Re-render this panel with fresh data so it shows the new "open" state
@@ -332,18 +332,18 @@ const { slate, isMember, isSpeaker, isAdmin, currentUserId } = Astro.props;
       });
     }
 
-    // ── Stay in sync if the suggestion changes elsewhere on the page
-    window.addEventListener('suggestion-scheduled', (e) => {
-      const id = e.detail?.suggestionId;
+    // ── Stay in sync if the topic changes elsewhere on the page
+    window.addEventListener('topic-scheduled', (e) => {
+      const id = e.detail?.topicId;
       if (id && id === activeId && root.dataset.state === 'open') open(id);
     });
-    window.addEventListener('suggestion-unscheduled', (e) => {
-      const id = e.detail?.suggestionId;
+    window.addEventListener('topic-unscheduled', (e) => {
+      const id = e.detail?.topicId;
       if (id && id === activeId && root.dataset.state === 'open') open(id);
     });
 
-    window.addEventListener('view-suggestion', (e) => {
-      const id = e.detail?.suggestionId;
+    window.addEventListener('view-topic', (e) => {
+      const id = e.detail?.topicId;
       if (id) open(id);
     });
     closeBtn.addEventListener('click', close);

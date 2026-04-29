@@ -1,16 +1,16 @@
 import type { APIRoute } from 'astro';
 import { getDb, slugify } from '@/lib/db';
-import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate, requireUser } from '@/lib/access';
+import { HttpError, jsonError, jsonOk, requireHostOnSlate, requireUser } from '@/lib/access';
 import { Enqueue } from '@/lib/activity';
 
 export const prerender = false;
 
-// PATCH a slate. Speakers (and App Admins) can edit.
+// PATCH a slate. Hosts (and App Admins) can edit.
 export const PATCH: APIRoute = async (ctx) => {
   try {
     const caller = requireUser(ctx);
     const slateId = ctx.params.id!;
-    await requireSpeakerOnSlate(ctx, slateId);
+    await requireHostOnSlate(ctx, slateId);
 
     const body = await ctx.request.json() as {
       name?: string;

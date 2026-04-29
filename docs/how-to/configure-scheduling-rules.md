@@ -10,7 +10,7 @@ This guide covers the common shapes. For the full field grammar, see [Reference:
 https://slate.ljs.app/<slug>/admin/rules
 ```
 
-You need to be a Speaker on the slate (or App-Admin).
+You need to be a Host on the slate (or App-Admin).
 
 ## Recipe: weekly on weekdays
 
@@ -55,7 +55,7 @@ Rules don't auto-generate. Hit **Regenerate slots** (button on the rules page). 
 
 1. Expands all active rules through the configured horizon (default 1 year).
 2. Inserts new slots that don't already exist (deduped by `UNIQUE(slate_id, start_time)`).
-3. Leaves existing slots alone — never overwrites status, speaker, or notes.
+3. Leaves existing slots alone — never overwrites status, host, or notes.
 
 To remove slots that no longer match a rule, cancel them in the admin slot grid.
 

@@ -1,7 +1,7 @@
 ---
 import Layout from '@/layouts/Layout.astro';
-import ScheduleSuggestionPanel from '@/components/ScheduleSuggestionPanel.astro';
-import SuggestionCard from '@/components/SuggestionCard.astro';
+import ScheduleTopicPanel from '@/components/ScheduleTopicPanel.astro';
+import TopicCard from '@/components/TopicCard.astro';
 import { getDb } from '@/lib/db';
 import { signInUrlForCtx, isAppAdmin } from '@/lib/auth';
 
@@ -16,14 +16,14 @@ const slate = await db.prepare('SELECT id, name, is_public, timezone FROM slates
 if (!slate) return new Response('Not found', { status: 404 });
 
 const user = Astro.locals.user;
-if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/suggestions`));
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/topics`));
 
 const isAdmin = isAppAdmin(user.scopes);
 const member = await db.prepare(
   'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
 ).bind(slate.id, user.id).first<{ role: string }>();
 if (!isAdmin && !member) return Astro.redirect(`/${slug}/join`);
-const isSpeaker = isAdmin || member?.role === 'speaker';
+const isHost = isAdmin || member?.role === 'host';
 
 const url = new URL(Astro.request.url);
 const status = url.searchParams.get('status') ?? 'open';
@@ -32,21 +32,21 @@ const where = status === 'all' ? 's.slate_id = ?' : 's.slate_id = ? AND s.status
 const params: unknown[] = status === 'all' ? [slate.id] : [slate.id, status];
 
 // When the user is viewing 'all', surface open items above scheduled/archived
-// — speakers scanning for things to claim should see actionable items first.
+// — hosts scanning for things to claim should see actionable items first.
 // Within each status group, sort by upvote count then recency.
-const suggestions = await db.prepare(
+const topics = await db.prepare(
   `SELECT s.id, s.title, s.description, s.url, s.tags, s.status, s.upvote_count,
           s.submitted_at, s.scheduled_slot_id,
           u.email AS author_email, u.display_name AS author_display_name,
           sl.start_time AS scheduled_start, sl.duration_minutes AS scheduled_duration,
-          sl.speaker_id AS scheduled_speaker_id,
-          spk.email AS scheduled_speaker_email,
-          spk.display_name AS scheduled_speaker_display_name,
-          (SELECT 1 FROM suggestion_votes v WHERE v.suggestion_id = s.id AND v.user_id = ?) AS has_voted
-   FROM suggestions s
+          sl.host_id AS scheduled_host_id,
+          spk.email AS scheduled_host_email,
+          spk.display_name AS scheduled_host_display_name,
+          (SELECT 1 FROM topic_votes v WHERE v.topic_id = s.id AND v.user_id = ?) AS has_voted
+   FROM topics s
    JOIN users u ON u.id = s.author_id
    LEFT JOIN slots sl ON sl.id = s.scheduled_slot_id
-   LEFT JOIN users spk ON spk.id = sl.speaker_id
+   LEFT JOIN users spk ON spk.id = sl.host_id
    WHERE ${where}
    ORDER BY (s.status = 'open') DESC, s.upvote_count DESC, s.submitted_at DESC`,
 ).bind(user.id, ...params).all<any>();
@@ -57,14 +57,14 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
 });
 ---
 
-<Layout title={`Suggestions · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+<Layout title={`Topics · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
   <section class="py-8 max-w-3xl">
     <div class="flex items-baseline justify-between mb-4">
       <div>
         <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
-        <h1 class="text-2xl font-bold">Suggestion pool</h1>
+        <h1 class="text-2xl font-bold">Topic pool</h1>
       </div>
-      <a href={`/${slug}/suggest`} class="btn btn-primary btn-sm">+ Suggest</a>
+      <a href={`/${slug}/topics/new`} class="btn btn-primary btn-sm">+ Suggest</a>
     </div>
 
     <div class="flex gap-2 mb-6 text-sm">
@@ -74,12 +74,12 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
     </div>
 
     <div class="space-y-3">
-      {suggestions.results.length === 0 && <p class="opacity-60 text-sm">No suggestions match.</p>}
-      {suggestions.results.map((s: any) => (
-        <SuggestionCard
+      {topics.results.length === 0 && <p class="opacity-60 text-sm">No topics match.</p>}
+      {topics.results.map((s: any) => (
+        <TopicCard
           s={s}
           isMember={true}
-          isSpeaker={isSpeaker}
+          isHost={isHost}
           currentUserId={user.id}
           isAdmin={isAdmin}
           fmtSched={fmtSched}
@@ -92,13 +92,13 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
     <p class="mt-8 text-sm"><a href={`/${slug}`} class="link">← Back to schedule</a></p>
   </section>
 
-  {isSpeaker && <ScheduleSuggestionPanel slate={{ id: slate.id, slug: slug!, name: slate.name }} />}
+  {isHost && <ScheduleTopicPanel slate={{ id: slate.id, slug: slug!, name: slate.name }} />}
 
   <script is:inline>
     document.querySelectorAll('.upvote').forEach(b => {
       b.addEventListener('click', async () => {
         b.disabled = true;
-        const res = await fetch(`/api/suggestions/${b.dataset.id}/vote`, { method: 'POST' });
+        const res = await fetch(`/api/topics/${b.dataset.id}/vote`, { method: 'POST' });
         if (res.ok) {
           const body = await res.json();
           const voted = !!body.has_voted;
@@ -110,7 +110,7 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
           count.classList.toggle('font-bold', voted);
           count.classList.toggle('opacity-70', !voted);
           count.textContent = body.upvote_count;
-          const card = b.closest('[data-suggestion-card]');
+          const card = b.closest('[data-topic-card]');
           card?.classList.toggle('border-signal', voted);
           card?.classList.toggle('border-base-300', !voted);
         } else {
@@ -122,10 +122,10 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
 
     document.querySelectorAll('.schedule-trigger').forEach(b => {
       b.addEventListener('click', () => {
-        window.dispatchEvent(new CustomEvent('schedule-suggestion', {
+        window.dispatchEvent(new CustomEvent('schedule-topic', {
           detail: {
-            suggestionId: b.dataset.suggestionId,
-            suggestionTitle: b.dataset.suggestionTitle,
+            topicId: b.dataset.topicId,
+            topicTitle: b.dataset.topicTitle,
           },
         }));
       });
@@ -133,7 +133,7 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
 
     document.querySelectorAll('.unschedule-trigger').forEach(b => {
       b.addEventListener('click', async () => {
-        if (!confirm(`Unschedule "${b.dataset.suggestionTitle}"? The slot goes back to open.`)) return;
+        if (!confirm(`Unschedule "${b.dataset.topicTitle}"? The slot goes back to open.`)) return;
         b.disabled = true;
         const res = await fetch(`/api/slots/${b.dataset.slotId}/claim-and-schedule`, { method: 'DELETE' });
         if (res.ok) location.reload();

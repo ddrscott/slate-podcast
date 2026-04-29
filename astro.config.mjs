@@ -14,6 +14,11 @@ export default defineConfig({
       remoteBindings: true,
     },
   }),
+  // Legacy-URL redirects for the speakers→hosts / suggestions→topics rename
+  // live in public/_redirects rather than here. Astro's `redirects` map
+  // appends /index.html to destinations under the Cloudflare adapter, which
+  // breaks redirects to server-rendered pages. Cloudflare's _redirects file
+  // is honored at the edge with no such mangling.
   integrations: [
     react(),
     tailwind({ applyBaseStyles: true }),

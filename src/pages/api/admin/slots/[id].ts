@@ -1,11 +1,11 @@
 import type { APIRoute } from 'astro';
 import { getDb } from '@/lib/db';
-import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate } from '@/lib/access';
+import { HttpError, jsonError, jsonOk, requireHostOnSlate } from '@/lib/access';
 
 export const prerender = false;
 
-// Speaker-level edits to a slot's metadata: status (e.g. cancelled),
-// duration, internal notes. (Topic and speaker assignment have their
+// Host-level edits to a slot's metadata: status (e.g. cancelled),
+// duration, internal notes. (Topic and host assignment have their
 // own narrower endpoints.)
 export const PATCH: APIRoute = async (ctx) => {
   try {
@@ -14,7 +14,7 @@ export const PATCH: APIRoute = async (ctx) => {
     const slot = await db.prepare('SELECT slate_id FROM slots WHERE id = ?').bind(slotId)
       .first<{ slate_id: string }>();
     if (!slot) throw new HttpError(404, 'not_found');
-    await requireSpeakerOnSlate(ctx, slot.slate_id);
+    await requireHostOnSlate(ctx, slot.slate_id);
 
     const body = await ctx.request.json() as Record<string, unknown>;
     const allowed = ['status','custom_title','notes_internal','duration_minutes'];

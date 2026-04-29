@@ -8,8 +8,8 @@ Authentication: most endpoints require a session cookie (set by `/api/auth/callb
 |---|---|
 | `unauthorized` | No session cookie / invalid |
 | `app_admin_required` | Session valid but missing `admin` / `slate:admin` scope |
-| `speaker_required` | Not a Speaker on the slate |
-| `membership_required` | Not a Member or Speaker on the slate |
+| `host_required` | Not a Host on the slate |
+| `membership_required` | Not a Member or Host on the slate |
 | `internal` | Unhandled server error (logged) |
 
 ## Auth
@@ -32,18 +32,18 @@ Authentication: most endpoints require a session cookie (set by `/api/auth/callb
 | `POST` | `/api/slates` | Create a new slate |
 | `PATCH` | `/api/slates/[id]` | Update slate (name / slug / timezone / visibility) |
 
-## Per-slate (Member or Speaker)
+## Per-slate (Member or Host)
 
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/slates/[id]/join` | Self-join as Member |
 | `GET` | `/api/slates/[id]/open-slots` | JSON list of open slots in the slate |
-| `GET` | `/api/slates/[id]/speakers` | List Speakers |
-| `POST` | `/api/slates/[id]/suggestions` | Post a new suggestion |
-| `GET` | `/api/slates/[id]/suggestions/check?title=...` | Fingerprint dedupe check |
+| `GET` | `/api/slates/[id]/hosts` | List Hosts |
+| `POST` | `/api/slates/[id]/topics` | Post a new topic |
+| `GET` | `/api/slates/[id]/topics/check?title=...` | Fingerprint dedupe check |
 | `POST` | `/api/slates/[id]/activity/mark-read` | Update the user's activity watermark |
 
-## Per-slate admin (Speaker or App-Admin)
+## Per-slate admin (Host or App-Admin)
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -52,7 +52,7 @@ Authentication: most endpoints require a session cookie (set by `/api/auth/callb
 | `POST` | `/api/slates/[id]/admin/regenerate-slots` | Expand all active rules and insert new slots |
 | `POST` | `/api/slates/[id]/admin/bulk-edit` | Bulk patch from the AG Grid sheet |
 | `GET` | `/api/slates/[id]/admin/export.csv` | CSV of all slots |
-| `POST / DELETE` | `/api/slates/[id]/speakers/[user_id]` | Promote / demote |
+| `POST / DELETE` | `/api/slates/[id]/hosts/[user_id]` | Promote / demote |
 
 ## Cross-slate admin (App-Admin)
 
@@ -61,25 +61,25 @@ Authentication: most endpoints require a session cookie (set by `/api/auth/callb
 | `PATCH / DELETE` | `/api/admin/rules/[id]` | Edit / delete a single rule |
 | `PATCH / DELETE` | `/api/admin/slots/[id]` | Edit / delete a single slot |
 | `POST` | `/api/admin/slots/[id]/[action]` | Status transitions (`cancel`, `reopen`, etc.) |
-| `PATCH / DELETE` | `/api/admin/suggestions/[id]` | Edit / archive a suggestion |
+| `PATCH / DELETE` | `/api/admin/topics/[id]` | Edit / archive a topic |
 
-## Slot actions (Speaker on slate, or App-Admin)
+## Slot actions (Host on slate, or App-Admin)
 
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/slots/[id]/claim-and-schedule` | One-shot claim + topic assignment |
-| `POST` | `/api/slots/[id]/assign-speaker` | Set `speaker_id` |
-| `PATCH` | `/api/slots/[id]/topic` | Set / clear `suggestion_id` or `custom_title` |
+| `POST` | `/api/slots/[id]/assign-host` | Set `host_id` |
+| `PATCH` | `/api/slots/[id]/topic` | Set / clear `topic_id` or `custom_title` |
 | `PATCH` | `/api/slots/[id]/show-notes` | Save / publish / unpublish notes |
 | `POST / DELETE` | `/api/slots/[id]/assets` | Add a slot asset |
 | `POST` | `/api/slots/[id]/promo-image` | Upload promo image (R2) |
 | `PATCH / DELETE` | `/api/slot-assets/[id]` | Edit / delete a single asset |
 
-## Suggestions
+## Topics
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/suggestions/[id]/vote` | Toggle the user's upvote |
+| `POST` | `/api/topics/[id]/vote` | Toggle the user's upvote |
 
 ## Cron
 

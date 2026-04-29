@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { getDb, now, randomId } from '@/lib/db';
-import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate } from '@/lib/access';
+import { HttpError, jsonError, jsonOk, requireHostOnSlate } from '@/lib/access';
 import { expandRule, type SlotRule } from '@/lib/recurrence';
 
 export const prerender = false;
@@ -8,7 +8,7 @@ export const prerender = false;
 export const POST: APIRoute = async (ctx) => {
   try {
     const slateId = ctx.params.id!;
-    await requireSpeakerOnSlate(ctx, slateId);
+    await requireHostOnSlate(ctx, slateId);
 
     const body = (await ctx.request.json().catch(() => ({}))) as { window_end?: string };
     const windowEnd = body.window_end ?? defaultHorizon();

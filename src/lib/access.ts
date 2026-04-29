@@ -16,19 +16,19 @@ export function requireAppAdmin(ctx: APIContext): ResolvedUser {
   return user;
 }
 
-// Speaker on the slate, OR App Admin (App Admins implicitly have Speaker rights everywhere).
-export async function requireSpeakerOnSlate(ctx: APIContext, slateId: string): Promise<void> {
+// Host on the slate, OR App Admin (App Admins implicitly have Host rights everywhere).
+export async function requireHostOnSlate(ctx: APIContext, slateId: string): Promise<void> {
   const user = requireUser(ctx);
   if (isAppAdmin(user.scopes)) return;
 
   const db = getDb(ctx);
   const row = await db.prepare(
-    `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ? AND role = 'speaker'`,
+    `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ? AND role = 'host'`,
   ).bind(slateId, user.id).first();
-  if (!row) throw new HttpError(403, 'speaker_required');
+  if (!row) throw new HttpError(403, 'host_required');
 }
 
-// Member or Speaker on the slate, OR App Admin.
+// Member or Host on the slate, OR App Admin.
 export async function requireMemberOnSlate(ctx: APIContext, slateId: string): Promise<void> {
   const user = requireUser(ctx);
   if (isAppAdmin(user.scopes)) return;

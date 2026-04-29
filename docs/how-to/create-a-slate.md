@@ -17,7 +17,7 @@ https://slate.ljs.app/admin/slates/new
 - **Timezone** — IANA name (`America/Chicago`, `Europe/Berlin`). Slot times resolve in this zone.
 - **Public?** — if checked, anyone with the URL sees the schedule. Uncheck for invite-only.
 
-Submit. You're now the slate's first Speaker (App-Admins are implicitly Speakers everywhere, but the row is also written explicitly).
+Submit. You're now the slate's first Host (App-Admins are implicitly Hosts everywhere, but the row is also written explicitly).
 
 ## 3. Add scheduling rules
 
@@ -29,13 +29,13 @@ Each rule generates slots on a recurring cadence. You can stack multiple — e.g
 
 After adding rules, click **Regenerate slots**. This expands the rules over the configured horizon (default 1 year) and inserts open slots, idempotently — re-running won't create duplicates because of `UNIQUE(slate_id, start_time)`.
 
-## 4. Promote your first Speakers
+## 4. Promote your first Hosts
 
 ```
 https://slate.ljs.app/<slug>/admin/people
 ```
 
-Anyone who's joined as a Member shows up here. Click **Promote** to make them a Speaker. Speakers can claim slots and post show notes.
+Anyone who's joined as a Member shows up here. Click **Promote** to make them a Host. Hosts can claim slots and post show notes.
 
 You can also demote — they revert to Member.
 

@@ -1,6 +1,6 @@
 # Slate
 
-Multi-tenant podcast slot manager. Calendly inverted: the host posts a year of empty slots, Members suggest topics, Speakers claim slots and pick from the pool.
+Multi-tenant podcast slot manager. Calendly inverted: the host posts a year of empty slots, Members suggest topics, Hosts claim slots and pick from the pool.
 
 Built for volunteer-run shows that don't have time to maintain a spreadsheet *and* enforce the workflow.
 
@@ -28,7 +28,7 @@ All developer and user docs live in [`docs/`](docs/), organized using the [Diata
 
 | If you want to… | Read |
 |---|---|
-| use Slate as a Member or Speaker | [Tutorial: Getting started](docs/tutorials/getting-started.md) |
+| use Slate as a Member or Host | [Tutorial: Getting started](docs/tutorials/getting-started.md) |
 | set up the dev env | [Tutorial: Local dev setup](docs/tutorials/local-dev-setup.md) |
 | deploy a fresh environment | [How-to: Deploy](docs/how-to/deploy.md) |
 | understand the data model | [Reference: Database schema](docs/reference/database-schema.md) |
