@@ -62,15 +62,16 @@ const fmtSlotTime = (sec: number) => new Intl.DateTimeFormat('en-US', {
 }).format(new Date(sec * 1000));
 
 const KIND_LABEL: Record<string, string> = {
-  member_joined:       'joined as a Member',
-  speaker_promoted:    'was promoted to Speaker by',
-  speaker_demoted:     'was demoted to Member by',
-  suggestion_posted:   'suggested',
-  suggestion_archived: 'archived',
-  slot_scheduled:      'scheduled',
-  slot_unscheduled:    'unscheduled',
-  notes_published:     'published show notes for',
-  slate_renamed:       'renamed the slate',
+  member_joined:        'joined as a Member',
+  speaker_promoted:     'was promoted to Speaker by',
+  speaker_demoted:      'was demoted to Member by',
+  speaker_substituted:  'subbed in for',
+  suggestion_posted:    'suggested',
+  suggestion_archived:  'archived',
+  slot_scheduled:       'scheduled',
+  slot_unscheduled:     'unscheduled',
+  notes_published:      'published show notes for',
+  slate_renamed:        'renamed the slate',
 };
 
 const unreadCount = rows.results.filter((r: any) => r.created_at > watermark).length;
@@ -118,17 +119,17 @@ const unreadCount = rows.results.filter((r: any) => r.created_at > watermark).le
                   r.kind === 'notes_published') && (
                   <>
                     <span class="font-mono opacity-80">{r.actor_email ? displayName({ display_name: r.actor_display_name, email: r.actor_email }) : 'someone'}</span>
-                    <span class="opacity-75"> {verb}</span>
+                    <span class="opacity-75"> {r.kind === 'slot_unscheduled' && meta.release ? 'released' : verb}</span>
                     {r.suggestion_title && (
                       <>
                         {' '}
                         <a href={`/${slug}/suggestions`} class="font-semibold link link-hover">"{r.suggestion_title}"</a>
                       </>
                     )}
-                    {r.kind === 'slot_scheduled' && r.slot_start && (
+                    {(r.kind === 'slot_scheduled' || r.kind === 'slot_unscheduled') && r.slot_start && (
                       <>
                         {' '}
-                        <span class="opacity-75">for</span>
+                        <span class="opacity-75">{r.kind === 'slot_scheduled' ? 'for' : 'on'}</span>
                         {' '}
                         <a href={`/${slug}/slot/${r.slot_id}`} class="font-mono text-xs underline-offset-2 hover:underline">
                           {fmtSlotTime(r.slot_start)}
@@ -145,6 +146,33 @@ const unreadCount = rows.results.filter((r: any) => r.created_at > watermark).le
                     <span class="opacity-75"> {verb}</span>
                     {' '}
                     <span class="font-mono opacity-60">{r.actor_email ? displayName({ display_name: r.actor_display_name, email: r.actor_email }) : 'an admin'}</span>
+                  </>
+                )}
+
+                {/* speaker_substituted — actor (new speaker) covered for target (previous speaker) */}
+                {r.kind === 'speaker_substituted' && (
+                  <>
+                    <span class="font-mono opacity-80">{r.actor_email ? displayName({ display_name: r.actor_display_name, email: r.actor_email }) : 'someone'}</span>
+                    <span class="opacity-75"> subbed in for </span>
+                    <span class="font-mono opacity-80">{r.target_email ? displayName({ display_name: r.target_display_name, email: r.target_email }) : '(unknown)'}</span>
+                    {r.suggestion_title && (
+                      <>
+                        {' '}
+                        <span class="opacity-75">on</span>
+                        {' '}
+                        <a href={`/${slug}/suggestions`} class="font-semibold link link-hover">"{r.suggestion_title}"</a>
+                      </>
+                    )}
+                    {r.slot_start && (
+                      <>
+                        {' '}
+                        <span class="opacity-75">·</span>
+                        {' '}
+                        <a href={`/${slug}/slot/${r.slot_id}`} class="font-mono text-xs underline-offset-2 hover:underline">
+                          {fmtSlotTime(r.slot_start)}
+                        </a>
+                      </>
+                    )}
                   </>
                 )}
 

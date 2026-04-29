@@ -11,6 +11,7 @@ export type ActivityKind =
   | 'member_joined'
   | 'speaker_promoted'
   | 'speaker_demoted'
+  | 'speaker_substituted'   // one Speaker took over a slot from another
   | 'suggestion_posted'
   | 'suggestion_archived'
   | 'slot_scheduled'

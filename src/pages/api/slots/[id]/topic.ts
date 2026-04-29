@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { getDb, now } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireUser } from '@/lib/access';
 import { isAppAdmin } from '@/lib/auth';
+import { logActivity } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -16,15 +17,18 @@ export const POST: APIRoute = async (ctx) => {
 
     const db = getDb(ctx);
     const slot = await db.prepare(
-      'SELECT slate_id, speaker_id, suggestion_id FROM slots WHERE id = ?',
-    ).bind(slotId).first<{ slate_id: string; speaker_id: string | null; suggestion_id: string | null }>();
+      'SELECT slate_id, speaker_id, suggestion_id, status FROM slots WHERE id = ?',
+    ).bind(slotId).first<{ slate_id: string; speaker_id: string | null; suggestion_id: string | null; status: string }>();
     if (!slot) throw new HttpError(404, 'slot_not_found');
 
     const allowed = slot.speaker_id === caller.id || isAppAdmin(caller.scopes);
     if (!allowed) throw new HttpError(403, 'must_be_speaker_of_slot');
 
+    const wasConfirmedLike = ['confirmed','recorded','published'].includes(slot.status);
+
     // Detach if suggestion_id is null
     if (!body.suggestion_id) {
+      const newStatus = slot.speaker_id ? 'assigned' : 'open';
       const stmts = [
         db.prepare(`UPDATE slots SET suggestion_id = NULL, custom_title = ?,
                     status = CASE WHEN speaker_id IS NULL THEN 'open' ELSE 'assigned' END
@@ -37,7 +41,21 @@ export const POST: APIRoute = async (ctx) => {
         ).bind(slot.suggestion_id));
       }
       await db.batch(stmts);
-      return jsonOk({ status: slot.speaker_id ? 'assigned' : 'open' });
+
+      // Topic detached. If the slot was scheduled-or-later, this is an
+      // unschedule event in the activity feed.
+      if (wasConfirmedLike && slot.suggestion_id) {
+        await logActivity(ctx, {
+          kind: 'slot_unscheduled',
+          slateId: slot.slate_id,
+          actorId: caller.id,
+          slotId,
+          suggestionId: slot.suggestion_id,
+          meta: { topic_detached: true },
+        });
+      }
+
+      return jsonOk({ status: newStatus });
     }
 
     // Verify suggestion belongs to the same slate
@@ -67,6 +85,22 @@ export const POST: APIRoute = async (ctx) => {
       ).bind(slot.suggestion_id));
     }
     await db.batch(stmts);
+
+    // Activity: a slot becoming 'confirmed' is the schedule event. If it was
+    // already confirmed (just swapping topics), record it as a topic change
+    // by attaching the previous suggestion to the meta.
+    if (newStatus === 'confirmed') {
+      await logActivity(ctx, {
+        kind: 'slot_scheduled',
+        slateId: slot.slate_id,
+        actorId: caller.id,
+        slotId,
+        suggestionId: body.suggestion_id,
+        meta: slot.suggestion_id && slot.suggestion_id !== body.suggestion_id
+          ? { replaced_suggestion_id: slot.suggestion_id }
+          : undefined,
+      });
+    }
 
     return jsonOk({ status: newStatus });
   } catch (err) { return jsonError(err); }

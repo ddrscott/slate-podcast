@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getDb } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireAppAdmin, requireUser } from '@/lib/access';
+import { logActivity } from '@/lib/activity';
 
 export const prerender = false;
 
@@ -30,6 +31,14 @@ export const DELETE: APIRoute = async (ctx) => {
       `UPDATE slate_members SET role = 'member', promoted_at = NULL, promoted_by = NULL
        WHERE slate_id = ? AND user_id = ?`,
     ).bind(slateId, targetUserId).run();
+
+    await logActivity(ctx, {
+      kind: 'speaker_demoted',
+      slateId,
+      actorId: caller.id,
+      targetUserId,
+      meta: isSelfDemote ? { self: true } : undefined,
+    });
 
     return jsonOk();
   } catch (err) { return jsonError(err); }
