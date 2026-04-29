@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getDb, now } from '@/lib/db';
 import { HttpError, jsonError, jsonOk, requireSpeakerOnSlate, requireUser } from '@/lib/access';
+import { isAppAdmin } from '@/lib/auth';
 
 export const prerender = false;
 
@@ -69,5 +70,44 @@ export const POST: APIRoute = async (ctx) => {
     await db.batch(stmts);
 
     return jsonOk({ slot_id: slotId, suggestion_id: suggestionId, status: 'confirmed' });
+  } catch (err) { return jsonError(err); }
+};
+
+// Undo the claim-and-schedule for the slot's *current* speaker. Releases
+// both the slot (back to status='open', no speaker) AND the topic
+// (suggestion back to status='open'). Allowed for the slot's current
+// speaker, or an App Admin.
+//
+// Symmetric counterpart to POST. The narrower "just detach the topic"
+// path stays on POST /api/slots/[id]/topic with `{suggestion_id: null}`.
+export const DELETE: APIRoute = async (ctx) => {
+  try {
+    const user = requireUser(ctx);
+    const slotId = ctx.params.id!;
+    const db = getDb(ctx);
+
+    const slot = await db.prepare(
+      'SELECT slate_id, speaker_id, suggestion_id FROM slots WHERE id = ?',
+    ).bind(slotId).first<{ slate_id: string; speaker_id: string | null; suggestion_id: string | null }>();
+    if (!slot) throw new HttpError(404, 'slot_not_found');
+
+    const allowed = slot.speaker_id === user.id || isAppAdmin(user.scopes);
+    if (!allowed) throw new HttpError(403, 'forbidden');
+
+    const stmts = [
+      db.prepare(
+        `UPDATE slots SET speaker_id = NULL, suggestion_id = NULL, status = 'open'
+         WHERE id = ?`,
+      ).bind(slotId),
+    ];
+    if (slot.suggestion_id) {
+      stmts.push(db.prepare(
+        `UPDATE suggestions SET status = 'open', scheduled_slot_id = NULL, scheduled_at = NULL,
+         scheduled_by = NULL WHERE id = ?`,
+      ).bind(slot.suggestion_id));
+    }
+    await db.batch(stmts);
+
+    return jsonOk({ slot_status: 'open' });
   } catch (err) { return jsonError(err); }
 };

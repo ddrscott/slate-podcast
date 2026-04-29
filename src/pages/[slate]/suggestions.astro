@@ -10,8 +10,8 @@ const slug = Astro.params.slate;
 if (!slug) return new Response('Not found', { status: 404 });
 
 const db = getDb(Astro);
-const slate = await db.prepare('SELECT id, name, is_public FROM slates WHERE slug = ?').bind(slug)
-  .first<{ id: string; name: string; is_public: number }>();
+const slate = await db.prepare('SELECT id, name, is_public, timezone FROM slates WHERE slug = ?').bind(slug)
+  .first<{ id: string; name: string; is_public: number; timezone: string }>();
 if (!slate) return new Response('Not found', { status: 404 });
 
 const user = Astro.locals.user;
@@ -33,12 +33,21 @@ const params: unknown[] = status === 'all' ? [slate.id] : [slate.id, status];
 const suggestions = await db.prepare(
   `SELECT s.id, s.title, s.description, s.url, s.tags, s.status, s.upvote_count,
           s.submitted_at, s.scheduled_slot_id, u.email AS author_email,
+          sl.start_time AS scheduled_start, sl.duration_minutes AS scheduled_duration,
+          sl.speaker_id AS scheduled_speaker_id, spk.email AS scheduled_speaker_email,
           (SELECT 1 FROM suggestion_votes v WHERE v.suggestion_id = s.id AND v.user_id = ?) AS has_voted
    FROM suggestions s
    JOIN users u ON u.id = s.author_id
+   LEFT JOIN slots sl ON sl.id = s.scheduled_slot_id
+   LEFT JOIN users spk ON spk.id = sl.speaker_id
    WHERE ${where}
    ORDER BY s.upvote_count DESC, s.submitted_at DESC`,
 ).bind(user.id, ...params).all<any>();
+
+const fmtSched = new Intl.DateTimeFormat('en-US', {
+  timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
+  hour: 'numeric', minute: '2-digit',
+});
 ---
 
 <Layout title={`Suggestions · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
@@ -86,11 +95,25 @@ const suggestions = await db.prepare(
                     ))}
                   </div>
                 )}
+                {s.status === 'scheduled' && s.scheduled_start && (
+                  <p class="text-xs mt-2 font-mono opacity-75">
+                    📅 {fmtSched.format(new Date(s.scheduled_start * 1000))}
+                    {s.scheduled_speaker_email && <span class="opacity-60"> · {s.scheduled_speaker_email}</span>}
+                  </p>
+                )}
                 {isSpeaker && s.status === 'open' && (
                   <button class="schedule-trigger btn btn-xs btn-primary mt-3"
                           data-suggestion-id={s.id}
                           data-suggestion-title={s.title}>
                     Claim &amp; schedule
+                  </button>
+                )}
+                {s.status === 'scheduled' && s.scheduled_slot_id &&
+                  (s.scheduled_speaker_id === user.id || isAdmin) && (
+                  <button class="unschedule-trigger btn btn-xs btn-ghost border border-base-300 mt-3 text-error"
+                          data-slot-id={s.scheduled_slot_id}
+                          data-suggestion-title={s.title}>
+                    Unschedule
                   </button>
                 )}
               </div>
@@ -132,6 +155,16 @@ const suggestions = await db.prepare(
             suggestionTitle: b.dataset.suggestionTitle,
           },
         }));
+      });
+    });
+
+    document.querySelectorAll('.unschedule-trigger').forEach(b => {
+      b.addEventListener('click', async () => {
+        if (!confirm(`Unschedule "${b.dataset.suggestionTitle}"? The slot goes back to open.`)) return;
+        b.disabled = true;
+        const res = await fetch(`/api/slots/${b.dataset.slotId}/claim-and-schedule`, { method: 'DELETE' });
+        if (res.ok) location.reload();
+        else { b.disabled = false; alert((await res.json().catch(() => ({}))).error ?? res.status); }
       });
     });
   </script>

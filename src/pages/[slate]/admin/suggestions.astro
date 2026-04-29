@@ -13,8 +13,8 @@ const user = Astro.locals.user;
 if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/admin/suggestions`));
 
 const db = getDb(Astro);
-const slate = await db.prepare('SELECT id, name FROM slates WHERE slug = ?').bind(slug)
-  .first<{ id: string; name: string }>();
+const slate = await db.prepare('SELECT id, name, timezone FROM slates WHERE slug = ?').bind(slug)
+  .first<{ id: string; name: string; timezone: string }>();
 if (!slate) return new Response('Not found', { status: 404 });
 
 const member = await db.prepare(
@@ -23,14 +23,25 @@ const member = await db.prepare(
 if (!isAppAdmin(user.scopes) && member?.role !== 'speaker') {
   return new Response('Speaker required', { status: 403 });
 }
+const isAdmin = isAppAdmin(user.scopes);
 
 const contribs = await db.prepare(
   `SELECT s.id, s.title, s.description, s.url, s.tags, s.status, s.upvote_count,
-          s.submitted_at, s.scheduled_slot_id, u.email AS author_email
-   FROM suggestions s JOIN users u ON u.id = s.author_id
+          s.submitted_at, s.scheduled_slot_id, u.email AS author_email,
+          sl.start_time AS scheduled_start, sl.duration_minutes AS scheduled_duration,
+          sl.speaker_id AS scheduled_speaker_id, spk.email AS scheduled_speaker_email
+   FROM suggestions s
+   JOIN users u ON u.id = s.author_id
+   LEFT JOIN slots sl ON sl.id = s.scheduled_slot_id
+   LEFT JOIN users spk ON spk.id = sl.speaker_id
    WHERE s.slate_id = ?
    ORDER BY (s.status = 'open') DESC, s.upvote_count DESC, s.submitted_at DESC`,
 ).bind(slate.id).all<any>();
+
+const fmtSched = new Intl.DateTimeFormat('en-US', {
+  timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
+  hour: 'numeric', minute: '2-digit',
+});
 ---
 
 <Layout title={`Moderate suggestions · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
@@ -68,11 +79,25 @@ const contribs = await db.prepare(
                     ))}
                   </div>
                 )}
+                {c.status === 'scheduled' && c.scheduled_start && (
+                  <p class="text-xs mt-2 font-mono opacity-75">
+                    📅 {fmtSched.format(new Date(c.scheduled_start * 1000))}
+                    {c.scheduled_speaker_email && <span class="opacity-60"> · {c.scheduled_speaker_email}</span>}
+                  </p>
+                )}
                 {c.status === 'open' && (
                   <button class="schedule-trigger btn btn-xs btn-primary mt-3"
                           data-suggestion-id={c.id}
                           data-suggestion-title={c.title}>
                     Claim &amp; schedule
+                  </button>
+                )}
+                {c.status === 'scheduled' && c.scheduled_slot_id &&
+                  (c.scheduled_speaker_id === user.id || isAdmin) && (
+                  <button class="unschedule-trigger btn btn-xs btn-ghost border border-base-300 mt-3 text-error"
+                          data-slot-id={c.scheduled_slot_id}
+                          data-suggestion-title={c.title}>
+                    Unschedule
                   </button>
                 )}
               </div>
@@ -116,6 +141,16 @@ const contribs = await db.prepare(
             suggestionTitle: b.dataset.suggestionTitle,
           },
         }));
+      });
+    });
+
+    document.querySelectorAll('.unschedule-trigger').forEach(b => {
+      b.addEventListener('click', async () => {
+        if (!confirm(`Unschedule "${b.dataset.suggestionTitle}"? The slot goes back to open.`)) return;
+        b.disabled = true;
+        const res = await fetch(`/api/slots/${b.dataset.slotId}/claim-and-schedule`, { method: 'DELETE' });
+        if (res.ok) location.reload();
+        else { b.disabled = false; alert((await res.json().catch(() => ({}))).error ?? res.status); }
       });
     });
   </script>
