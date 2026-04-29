@@ -27,8 +27,10 @@ export const PATCH: APIRoute = async (ctx) => {
       fields.push('name = ?'); values.push(v);
     }
     if (typeof body.slug === 'string') {
-      const v = (body.slug.trim() || slugify(body.slug));
-      if (!v || v.length < 2 || v.length > 64 || !/^[a-z0-9][a-z0-9-]*$/.test(v)) {
+      // Always normalize — accept whatever the user typed and lowercase /
+      // strip non-conforming chars. Reject only if nothing usable remains.
+      const v = slugify(body.slug);
+      if (!v || v.length < 2 || v.length > 64) {
         throw new HttpError(400, 'invalid_slug');
       }
       fields.push('slug = ?'); values.push(v);

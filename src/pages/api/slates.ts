@@ -16,8 +16,10 @@ export const POST: APIRoute = async (ctx) => {
     };
     const name = (body.name ?? '').trim();
     if (!name || name.length > 120) throw new HttpError(400, 'invalid_name');
-    const slug = (body.slug?.trim() || slugify(name));
-    if (!slug || slug.length < 2) throw new HttpError(400, 'invalid_slug');
+    // Normalize whatever the user typed — fall back to slugifying the name
+    // if the slug field is empty.
+    const slug = slugify(body.slug ?? '') || slugify(name);
+    if (!slug || slug.length < 2 || slug.length > 64) throw new HttpError(400, 'invalid_slug');
     const tz = (body.timezone ?? 'America/Chicago').trim();
     if (!isValidTimezone(tz)) throw new HttpError(400, 'invalid_timezone');
 

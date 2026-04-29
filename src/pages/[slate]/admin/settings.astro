@@ -41,8 +41,8 @@ if (!isAppAdmin(user.scopes) && member?.role !== 'speaker') {
       <label class="form-control">
         <span class="label-text">Slug (URL identifier)</span>
         <input name="slug" required maxlength="64" class="input input-bordered font-mono"
-               pattern="[a-z0-9][a-z0-9-]*" value={slate.slug} />
-        <span class="text-xs opacity-60 mt-1">Public URL: <code>/{slate.slug}</code></span>
+               value={slate.slug} autocapitalize="off" autocorrect="off" spellcheck="false" />
+        <span class="text-xs opacity-60 mt-1">Public URL: <code id="slug-preview">/{slate.slug}</code></span>
       </label>
       <label class="form-control">
         <span class="label-text">Description</span>
@@ -70,6 +70,29 @@ if (!isAppAdmin(user.scopes) && member?.role !== 'speaker') {
   <script is:inline define:vars={{ slateId: slate.id, currentSlug: slate.slug }}>
     const form = document.getElementById('settings-form');
     const status = document.getElementById('status');
+    const slugInput = form.querySelector('[name=slug]');
+    const slugPreview = document.getElementById('slug-preview');
+
+    // Live-normalize the slug as the user types so the saved value matches
+    // what they see. Mirrors the server-side slugify() in src/lib/db.ts.
+    function normalizeSlug(s) {
+      return s.toLowerCase()
+        .normalize('NFKD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 64);
+    }
+    slugInput.addEventListener('input', () => {
+      const cleaned = normalizeSlug(slugInput.value);
+      if (cleaned !== slugInput.value) {
+        const pos = slugInput.selectionStart;
+        slugInput.value = cleaned;
+        slugInput.setSelectionRange?.(pos, pos);
+      }
+      slugPreview.textContent = `/${cleaned}`;
+    });
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const data = new FormData(form);

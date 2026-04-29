@@ -22,8 +22,9 @@ if (!isAppAdmin(user.scopes)) return new Response('App-Admin required', { status
       <label class="form-control">
         <span class="label-text">Slug (URL identifier)</span>
         <input name="slug" maxlength="64" class="input input-bordered font-mono"
-               placeholder="ar (auto-derived from name if blank)" pattern="[a-z0-9][a-z0-9-]*" />
-        <span class="text-xs opacity-60 mt-1">Becomes <code class="font-mono">/{`{slug}`}</code>. You can change it later for soft privacy.</span>
+               placeholder="ar (auto-derived from name if blank)"
+               autocapitalize="off" autocorrect="off" spellcheck="false" />
+        <span class="text-xs opacity-60 mt-1">Becomes <code class="font-mono" id="slug-preview">/{`{slug}`}</code>. You can change it later for soft privacy.</span>
       </label>
       <label class="form-control">
         <span class="label-text">Timezone</span>
@@ -54,6 +55,34 @@ if (!isAppAdmin(user.scopes)) return new Response('App-Admin required', { status
   <script is:inline>
     const form = document.getElementById('new-slate');
     const status = document.getElementById('status');
+    const slugInput = form.querySelector('[name=slug]');
+    const nameInput = form.querySelector('[name=name]');
+    const slugPreview = document.getElementById('slug-preview');
+
+    function normalizeSlug(s) {
+      return s.toLowerCase()
+        .normalize('NFKD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 64);
+    }
+    function updatePreview() {
+      const explicit = normalizeSlug(slugInput.value);
+      const derived = explicit || normalizeSlug(nameInput.value);
+      slugPreview.textContent = derived ? `/${derived}` : '/{slug}';
+    }
+    slugInput.addEventListener('input', () => {
+      const cleaned = normalizeSlug(slugInput.value);
+      if (cleaned !== slugInput.value) {
+        const pos = slugInput.selectionStart;
+        slugInput.value = cleaned;
+        slugInput.setSelectionRange?.(pos, pos);
+      }
+      updatePreview();
+    });
+    nameInput.addEventListener('input', updatePreview);
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const data = new FormData(form);
