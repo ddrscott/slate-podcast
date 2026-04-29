@@ -105,9 +105,14 @@ const computedOgDescription = ogDescription ?? (slate
               )}
             </a>
           )}
+          {slate && (slateContext?.isMember || slateContext?.isHost) && (
+            <a href={`/${slate.slug}/edit`} class="px-3 py-1.5 rounded text-sm hover:bg-base-200 hover:text-signal transition-colors">
+              Dashboard
+            </a>
+          )}
           {showManageBtn && (
             <a href={`/${slate!.slug}/admin`} class="px-3 py-1.5 rounded text-sm hover:bg-base-200 hover:text-signal transition-colors">
-              Manage
+              Admin
             </a>
           )}
           {user ? (

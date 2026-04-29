@@ -137,7 +137,7 @@ const myTopics = await db.prepare(
           <ul class="space-y-2">
             {memberships.results.map(m => (
               <li>
-                <a href={`/${m.slug}`} class="block p-3 border border-base-300 rounded hover:border-signal">
+                <a href={`/${m.slug}/edit`} class="block p-3 border border-base-300 rounded hover:border-signal">
                   <div class="flex items-center justify-between">
                     <span class="font-semibold">{m.name}</span>
                     <span class={`badge badge-xs ${m.role === 'host' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>

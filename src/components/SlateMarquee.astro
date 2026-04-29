@@ -58,9 +58,11 @@ interface Props {
   pastEpisodes: PastEpisode[];
   signInHref: string;
   isSignedIn: boolean;
+  isMember: boolean;
+  isHost: boolean;
 }
 
-const { slate, hosts, upcoming, topTopics, pastEpisodes, signInHref, isSignedIn } = Astro.props;
+const { slate, hosts, upcoming, topTopics, pastEpisodes, signInHref, isSignedIn, isMember, isHost } = Astro.props;
 
 const fmtUpcoming = new Intl.DateTimeFormat('en-US', {
   timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
@@ -85,11 +87,22 @@ const hostCount = hosts.length;
 const topicCount = topTopics.length;
 const episodeCount = pastEpisodes.length;
 
-// Primary CTA wording depends on signed-in state. If the user is signed
-// in but landed here, they're a non-member viewing a public slate — the
-// CTA is "Join as a Member"; if they're a visitor, it's "Sign in to vote".
-const primaryCtaLabel = isSignedIn ? 'Join as a Member' : 'Sign in to vote';
-const primaryCtaHref  = isSignedIn ? `/${slate.slug}/join` : signInHref;
+// Primary CTA depends on viewer relationship to the slate:
+//   visitor          → sign in (and come back here)
+//   signed-in viewer → join as a member
+//   member / host    → open the dashboard (where voting + scheduling lives)
+let primaryCtaLabel: string;
+let primaryCtaHref: string;
+if (isMember || isHost) {
+  primaryCtaLabel = 'Open dashboard →';
+  primaryCtaHref  = `/${slate.slug}/edit`;
+} else if (isSignedIn) {
+  primaryCtaLabel = 'Join as a Member';
+  primaryCtaHref  = `/${slate.slug}/join`;
+} else {
+  primaryCtaLabel = 'Sign in to vote';
+  primaryCtaHref  = signInHref;
+}
 ---
 
 <article class="-mt-8">
@@ -257,7 +270,11 @@ const primaryCtaHref  = isSignedIn ? `/${slate.slug}/join` : signInHref;
         ))}
       </ol>
       <p class="mt-6 text-sm opacity-70">
-        {isSignedIn ? (
+        {(isMember || isHost) ? (
+          <>
+            <a href={`/${slate.slug}/edit`} class="link link-hover text-signal">Open the dashboard</a> to vote and post your own.
+          </>
+        ) : isSignedIn ? (
           <>
             <a href={`/${slate.slug}/join`} class="link link-hover text-signal">Join as a Member</a> to vote and post your own.
           </>

@@ -1,0 +1,527 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import ScheduleTopicPanel from '@/components/ScheduleTopicPanel.astro';
+import TopicDetailPanel from '@/components/TopicDetailPanel.astro';
+import TopicCard from '@/components/TopicCard.astro';
+import SlateSidebar from '@/components/SlateSidebar.astro';
+import { getDb, getEnv } from '@/lib/db';
+import { isAppAdmin, signInUrl } from '@/lib/auth';
+
+export const prerender = false;
+
+// Member dashboard. Voting + suggesting + scheduling — the power-user
+// workspace for participants in the slate. Public visitors see the
+// marquee at /[slate]; this page is gated to members and App Admins.
+
+const slug = Astro.params.slate;
+if (!slug) return new Response('Not found', { status: 404 });
+
+const db = getDb(Astro);
+const slate = await db.prepare(
+  `SELECT id, slug, name, description, timezone, is_public FROM slates WHERE slug = ?`,
+).bind(slug).first<{
+  id: string; slug: string; name: string; description: string | null;
+  timezone: string; is_public: number;
+}>();
+
+if (!slate) return new Response('Not found', { status: 404 });
+if (!slate.is_public) return new Response('Private slate', { status: 403 });
+
+const user = Astro.locals.user;
+const env = getEnv(Astro);
+const reqUrl = new URL(Astro.request.url);
+
+// Visitor → bounce to sign-in, then return here.
+if (!user) {
+  return Astro.redirect(signInUrl(env, reqUrl.origin, `/${slug}/edit`));
+}
+
+const member = await db.prepare(
+  `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string }>();
+const isMember = !!member;
+const isHost = member?.role === 'host' || isAppAdmin(user.scopes);
+const isAdmin = isAppAdmin(user.scopes);
+
+// Signed-in non-member → land on the public marquee (where the join
+// affordance lives). Stable URL invariant: /[slate]/edit is always the
+// dashboard; visitors who can't see it never land on it.
+if (!isMember && !isAdmin) {
+  return Astro.redirect(`/${slug}`);
+}
+
+// Slots window: roughly the next ~3 months from "today" (UTC) — covers
+// "current + next month" reliably across timezones, with a buffer for tz drift.
+const nowSec = Math.floor(Date.now() / 1000);
+const horizonSec = nowSec + 95 * 86400;
+const slots = await db.prepare(
+  `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status,
+          COALESCE(sl.custom_title, sug.title) AS title,
+          u.email AS host_email
+   FROM slots sl
+   LEFT JOIN topics sug ON sug.id = sl.topic_id
+   LEFT JOIN users u ON u.id = sl.host_id
+   WHERE sl.slate_id = ? AND sl.status != 'cancelled'
+   AND sl.start_time >= ? AND sl.start_time < ?
+   ORDER BY sl.start_time`,
+).bind(slate.id, nowSec - 86400, horizonSec).all<{ id: string; start_time: number; duration_minutes: number; status: string; title: string | null; host_email: string | null }>();
+
+const slotsForGrid = slots.results.map(s => ({
+  id: s.id,
+  start_time: s.start_time,
+  duration_minutes: s.duration_minutes,
+  status: s.status as any,
+  theme: null,
+  title: s.title,
+}));
+
+// Full pool of open + scheduled topics for the topics pane. Open first
+// so a host scanning for things to claim sees actionable rows above the
+// already-taken ones; within each status, by upvote count then recency.
+// Archived topics are accessible via the /topics archive view.
+const topics = await db.prepare(
+  `SELECT s.id, s.title, s.description, s.url, s.upvote_count, s.status,
+          s.scheduled_slot_id,
+          sl.start_time AS scheduled_start, sl.duration_minutes AS scheduled_duration,
+          sl.host_id AS scheduled_host_id,
+          spk.email AS scheduled_host_email,
+          spk.display_name AS scheduled_host_display_name,
+          (SELECT 1 FROM topic_votes v WHERE v.topic_id = s.id AND v.user_id = ?) AS has_voted
+   FROM topics s
+   LEFT JOIN slots sl ON sl.id = s.scheduled_slot_id
+   LEFT JOIN users spk ON spk.id = sl.host_id
+   WHERE s.slate_id = ? AND s.status IN ('open','scheduled')
+   ORDER BY (s.status = 'open') DESC, s.upvote_count DESC, s.submitted_at DESC`,
+).bind(user.id, slate.id).all<{
+  id: string; title: string; description: string | null; url: string | null;
+  upvote_count: number; status: string; has_voted: number | null;
+  scheduled_slot_id: string | null;
+  scheduled_start: number | null; scheduled_duration: number | null;
+  scheduled_host_id: string | null;
+  scheduled_host_email: string | null;
+  scheduled_host_display_name: string | null;
+}>();
+
+const openCount = topics.results.filter(s => s.status === 'open').length;
+const scheduledCount = topics.results.filter(s => s.status === 'scheduled').length;
+const totalCount = topics.results.length;
+
+const fmtSched = new Intl.DateTimeFormat('en-US', {
+  timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
+  hour: 'numeric', minute: '2-digit',
+});
+
+// Unread-activity count for the current user.
+const watermark = await db.prepare(
+  'SELECT watermark_at FROM activity_seen WHERE user_id = ? AND slate_id = ?',
+).bind(user.id, slate.id).first<{ watermark_at: number }>();
+const wm = watermark?.watermark_at ?? 0;
+const row = await db.prepare(
+  'SELECT COUNT(*) AS n FROM activity WHERE slate_id = ? AND created_at > ?',
+).bind(slate.id, wm).first<{ n: number }>();
+const unreadActivity = row?.n ?? 0;
+---
+
+<Layout
+  title={`${slate.name} · dashboard`}
+  description={slate.description ?? undefined}
+  slate={{ name: slate.name, slug: slate.slug }}
+  slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null, unreadActivity }}
+>
+  <div class="lg:flex lg:gap-8 lg:items-start">
+    {/* Sidebar (desktop only) — categories + mini calendar.
+        On mobile the same sidebar lives in a drawer below. */}
+    <aside class="hidden lg:block w-64 shrink-0 lg:sticky lg:top-4">
+      <SlateSidebar
+        slate={{ slug: slate.slug, timezone: slate.timezone }}
+        slots={slotsForGrid}
+        totalCount={totalCount}
+        openCount={openCount}
+        scheduledCount={scheduledCount}
+      />
+    </aside>
+
+    {/* Body */}
+    <div class="flex-1 min-w-0">
+      {/* Action bar: search + primary CTA + drawer toggle (mobile) */}
+      <header class="flex flex-wrap items-center gap-2 mb-4">
+        <button id="sidebar-toggle" type="button"
+                class="lg:hidden inline-flex items-center gap-2 px-3 py-2 rounded border border-base-300 hover:bg-base-200 text-sm"
+                aria-label="Open filters and schedule">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+          <span>Filters &amp; schedule</span>
+        </button>
+        <input id="topic-search" type="search" placeholder="Search topics…"
+               class="input input-bordered input-sm flex-1 min-w-0" />
+        <a href={`/${slate.slug}/topics/new`} class="btn btn-primary btn-sm shrink-0">+ Suggest a topic</a>
+      </header>
+
+      {totalCount === 0 ? (
+        <div class="rounded border border-base-300 bg-base-200/40 p-6 text-center">
+          <p class="text-sm opacity-70">
+            No topics yet.
+            <a href={`/${slate.slug}/topics/new`} class="link"> Be the first →</a>
+          </p>
+        </div>
+      ) : (
+        <>
+          <div id="topics-list" class="space-y-3">
+            {topics.results.map(s => (
+              <TopicCard
+                s={s}
+                isMember={isMember}
+                isHost={isHost}
+                currentUserId={user.id}
+                isAdmin={isAdmin}
+                fmtSched={fmtSched}
+              />
+            ))}
+          </div>
+
+          <p id="topics-empty" class="hidden mt-6 text-center text-sm opacity-60">
+            Nothing matches.
+          </p>
+        </>
+      )}
+    </div>
+  </div>
+
+  {/* Mobile drawer — same sidebar contents, slides in from the left. */}
+  <div id="sidebar-drawer-root" class="lg:hidden hidden fixed inset-0 z-40" role="dialog" aria-modal="true" aria-label="Filters and schedule">
+    <div id="sidebar-drawer-backdrop" class="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-200"></div>
+    <aside id="sidebar-drawer-pane"
+           class="absolute left-0 top-0 h-full w-80 max-w-[85vw] bg-base-100 shadow-2xl overflow-y-auto -translate-x-full transition-transform duration-200">
+      <div class="flex items-center justify-between p-3 border-b border-base-300">
+        <p class="font-mono text-xs text-signal">// filters &amp; schedule</p>
+        <button id="sidebar-drawer-close" type="button" aria-label="Close"
+                class="btn btn-ghost btn-sm btn-square">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M6 6l12 12M6 18L18 6"/>
+          </svg>
+        </button>
+      </div>
+      <div class="p-3">
+        <SlateSidebar
+          slate={{ slug: slate.slug, timezone: slate.timezone }}
+          slots={slotsForGrid}
+          totalCount={totalCount}
+          openCount={openCount}
+          scheduledCount={scheduledCount}
+        />
+      </div>
+    </aside>
+  </div>
+
+  {isHost && <ScheduleTopicPanel slate={{ id: slate.id, slug: slate.slug, name: slate.name }} />}
+
+  <TopicDetailPanel
+    slate={{ id: slate.id, slug: slate.slug, name: slate.name, timezone: slate.timezone }}
+    isMember={isMember}
+    isHost={isHost}
+    isAdmin={isAdmin}
+    currentUserId={user.id}
+  />
+
+  <script is:inline define:vars={{
+    slateId: slate.id,
+    slateTimezone: slate.timezone,
+    isHost,
+  }}>
+    // ─── Helpers ─────────────────────────────────────────────────────────
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+    const fmtSched = new Intl.DateTimeFormat('en-US', {
+      timeZone: slateTimezone, weekday: 'short', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+    });
+
+    // ─── Sidebar drawer (mobile) ─────────────────────────────────────────
+    const drawerRoot = document.getElementById('sidebar-drawer-root');
+    const drawerPane = document.getElementById('sidebar-drawer-pane');
+    const drawerBackdrop = document.getElementById('sidebar-drawer-backdrop');
+    const drawerOpenBtn = document.getElementById('sidebar-toggle');
+    const drawerCloseBtn = document.getElementById('sidebar-drawer-close');
+
+    function openDrawer() {
+      if (!drawerRoot || !drawerPane || !drawerBackdrop) return;
+      drawerRoot.classList.remove('hidden');
+      void drawerPane.offsetWidth;
+      drawerPane.classList.remove('-translate-x-full');
+      drawerBackdrop.classList.remove('opacity-0');
+    }
+    function closeDrawer() {
+      if (!drawerRoot || !drawerPane || !drawerBackdrop) return;
+      drawerPane.classList.add('-translate-x-full');
+      drawerBackdrop.classList.add('opacity-0');
+      setTimeout(() => drawerRoot.classList.add('hidden'), 200);
+    }
+    drawerOpenBtn?.addEventListener('click', openDrawer);
+    drawerCloseBtn?.addEventListener('click', closeDrawer);
+    drawerBackdrop?.addEventListener('click', closeDrawer);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && drawerRoot && !drawerRoot.classList.contains('hidden')) closeDrawer();
+    });
+
+    // ─── Filter chips + search ───────────────────────────────────────────
+    // Filter chips appear in BOTH sidebar instances (desktop + drawer).
+    // Active state syncs across them by data-filter attribute.
+    const ACTIVE_CHIP_CLASSES = ['bg-base-200', 'font-semibold', 'text-signal'];
+    const searchInput = document.getElementById('topic-search');
+    const topicsList = document.getElementById('topics-list');
+    const topicsEmpty = document.getElementById('topics-empty');
+    let activeFilter = 'open';
+
+    function syncFilterChipActive() {
+      document.querySelectorAll('.filter-chip').forEach(chip => {
+        const isActive = chip.dataset.filter === activeFilter;
+        ACTIVE_CHIP_CLASSES.forEach(cls => chip.classList.toggle(cls, isActive));
+      });
+    }
+
+    function applyFilters() {
+      if (!topicsList) return;
+      const q = (searchInput?.value ?? '').trim().toLowerCase();
+      let visible = 0;
+      topicsList.querySelectorAll('[data-topic-card]').forEach(card => {
+        const status = card.dataset.topicStatus;
+        const matchesFilter = activeFilter === 'all' || activeFilter === status;
+        const matchesSearch = !q || (card.textContent || '').toLowerCase().includes(q);
+        const show = matchesFilter && matchesSearch;
+        card.classList.toggle('hidden', !show);
+        if (show) visible++;
+      });
+      topicsEmpty?.classList.toggle('hidden', visible > 0);
+    }
+
+    document.addEventListener('click', (e) => {
+      const chip = e.target.closest('.filter-chip');
+      if (!chip) return;
+      activeFilter = chip.dataset.filter;
+      syncFilterChipActive();
+      applyFilters();
+      if (drawerRoot && !drawerRoot.classList.contains('hidden')) closeDrawer();
+    });
+    searchInput?.addEventListener('input', applyFilters);
+
+    function refreshCounts() {
+      if (!topicsList) return;
+      let open = 0, scheduled = 0;
+      topicsList.querySelectorAll('[data-topic-card]').forEach(c => {
+        if (c.dataset.topicStatus === 'open') open++;
+        else if (c.dataset.topicStatus === 'scheduled') scheduled++;
+      });
+      const total = open + scheduled;
+      const setAll = (sel, txt) => {
+        document.querySelectorAll(sel).forEach(el => { el.textContent = txt; });
+      };
+      setAll('[data-filter="open"] span:last-child', String(open));
+      setAll('[data-filter="scheduled"] span:last-child', String(scheduled));
+      setAll('[data-filter="all"] span:last-child', String(total));
+    }
+
+    applyFilters();
+    syncFilterChipActive();
+
+    // ─── Card transitions (driven by panel / unschedule events) ──────────
+    function transitionCardToScheduled(detail) {
+      const { topicId, slotId, startTime, hostEmail, hostName } = detail;
+      const card = document.querySelector(`[data-topic-card="${topicId}"]`);
+      if (!card) return;
+
+      card.dataset.topicStatus = 'scheduled';
+      card.classList.remove('bg-base-100');
+      card.classList.add('bg-base-200/40');
+
+      card.querySelector('[data-card-title]')?.classList.add('opacity-70');
+
+      const content = card.querySelector('[data-card-content]');
+      if (!content) return;
+
+      let meta = content.querySelector('[data-card-meta]');
+      if (!meta) {
+        meta = document.createElement('div');
+        meta.setAttribute('data-card-meta', '');
+        meta.className = 'flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs font-mono opacity-60';
+        const desc = content.querySelector('[data-card-description]');
+        const title = content.querySelector('[data-card-title]');
+        (desc ?? title)?.after(meta);
+      }
+      const dateStr = startTime ? fmtSched.format(new Date(startTime * 1000)) : '';
+      const hostLabel = hostName || (hostEmail ? hostEmail.split('@')[0] : '');
+      meta.innerHTML =
+        (dateStr ? `<span>${escapeHtml(dateStr)}</span>` : '') +
+        (hostLabel ? `<span class="opacity-80">→ ${escapeHtml(hostLabel)}</span>` : '');
+
+      let actions = content.querySelector('[data-card-actions]');
+      if (!actions) {
+        actions = document.createElement('div');
+        actions.setAttribute('data-card-actions', '');
+        actions.className = 'mt-3 flex items-center gap-3';
+        content.appendChild(actions);
+      }
+      const titleText = card.dataset.topicTitle ?? '';
+      actions.innerHTML = `
+        <button type="button"
+                class="unschedule-trigger text-xs opacity-60 hover:opacity-100 hover:text-error transition-colors px-2 py-1 -mx-2"
+                data-slot-id="${escapeHtml(slotId)}"
+                data-topic-title="${escapeHtml(titleText)}">
+          Unschedule
+        </button>
+      `;
+      bindUnscheduleTriggers(actions);
+
+      applyFilters();
+      refreshCounts();
+    }
+
+    function transitionCardToOpen(detail) {
+      const { topicId } = detail;
+      const card = document.querySelector(`[data-topic-card="${topicId}"]`);
+      if (!card) return;
+
+      card.dataset.topicStatus = 'open';
+      card.classList.remove('bg-base-200/40');
+      card.classList.add('bg-base-100');
+
+      card.querySelector('[data-card-title]')?.classList.remove('opacity-70');
+
+      const content = card.querySelector('[data-card-content]');
+      if (!content) return;
+
+      content.querySelector('[data-card-meta]')?.remove();
+
+      let actions = content.querySelector('[data-card-actions]');
+      if (isHost) {
+        if (!actions) {
+          actions = document.createElement('div');
+          actions.setAttribute('data-card-actions', '');
+          actions.className = 'mt-3 flex items-center gap-3';
+          content.appendChild(actions);
+        }
+        const titleText = card.dataset.topicTitle ?? '';
+        actions.innerHTML = `
+          <button type="button"
+                  class="schedule-trigger btn btn-sm btn-primary"
+                  data-topic-id="${escapeHtml(topicId)}"
+                  data-topic-title="${escapeHtml(titleText)}">
+            Claim &amp; schedule
+          </button>
+        `;
+        bindScheduleTriggers(actions);
+      } else {
+        actions?.remove();
+      }
+
+      applyFilters();
+      refreshCounts();
+    }
+
+    window.addEventListener('topic-scheduled', (e) => transitionCardToScheduled(e.detail ?? {}));
+    window.addEventListener('topic-unscheduled', (e) => transitionCardToOpen(e.detail ?? {}));
+
+    // ─── Upvote, schedule, unschedule ────────────────────────────────────
+    function bindUpvote(root) {
+      root.querySelectorAll('.upvote').forEach(b => {
+        if (b.dataset.bound) return;
+        b.dataset.bound = '1';
+        b.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          b.disabled = true;
+          const res = await fetch(`/api/topics/${b.dataset.id}/vote`, { method: 'POST' });
+          if (res.ok) {
+            const body = await res.json();
+            const voted = !!body.has_voted;
+            const arrow = b.querySelector('[data-vote-arrow]');
+            const count = b.querySelector('[data-vote-count]');
+            arrow.classList.toggle('text-signal', voted);
+            arrow.classList.toggle('opacity-40', !voted);
+            count.classList.toggle('text-signal', voted);
+            count.classList.toggle('font-bold', voted);
+            count.classList.toggle('opacity-70', !voted);
+            count.textContent = body.upvote_count;
+            const card = b.closest('[data-topic-card]');
+            card?.classList.toggle('border-signal', voted);
+            card?.classList.toggle('border-base-300', !voted);
+          } else {
+            alert((await res.json().catch(() => ({}))).error ?? res.status);
+          }
+          b.disabled = false;
+        });
+      });
+    }
+    function bindScheduleTriggers(root) {
+      root.querySelectorAll('.schedule-trigger').forEach(b => {
+        if (b.dataset.bound) return;
+        b.dataset.bound = '1';
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          window.dispatchEvent(new CustomEvent('schedule-topic', {
+            detail: {
+              topicId: b.dataset.topicId,
+              topicTitle: b.dataset.topicTitle,
+            },
+          }));
+        });
+      });
+    }
+    function bindUnscheduleTriggers(root) {
+      root.querySelectorAll('.unschedule-trigger').forEach(b => {
+        if (b.dataset.bound) return;
+        b.dataset.bound = '1';
+        b.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (!confirm(`Unschedule "${b.dataset.topicTitle}"? The slot goes back to open.`)) return;
+          b.disabled = true;
+          const slotId = b.dataset.slotId;
+          const res = await fetch(`/api/slots/${slotId}/claim-and-schedule`, { method: 'DELETE' });
+          if (res.ok) {
+            const body = await res.json();
+            window.dispatchEvent(new CustomEvent('slot-updated', {
+              detail: { slotId, status: 'open', title: null },
+            }));
+            if (body.freed_topic_id) {
+              window.dispatchEvent(new CustomEvent('topic-unscheduled', {
+                detail: { topicId: body.freed_topic_id },
+              }));
+            }
+          } else {
+            b.disabled = false;
+            alert((await res.json().catch(() => ({}))).error ?? res.status);
+          }
+        });
+      });
+    }
+    bindUpvote(document);
+    bindScheduleTriggers(document);
+    bindUnscheduleTriggers(document);
+
+    // ─── Open detail panel on card click (anywhere not a button/link) ────
+    function openDetail(card) {
+      window.dispatchEvent(new CustomEvent('view-topic', {
+        detail: { topicId: card.dataset.topicCard },
+      }));
+    }
+    function bindCardClick(root) {
+      root.querySelectorAll('[data-topic-card]').forEach(card => {
+        if (card.dataset.cardBound) return;
+        card.dataset.cardBound = '1';
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('button, a')) return;
+          openDetail(card);
+        });
+        card.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          if (e.target !== card) return;
+          e.preventDefault();
+          openDetail(card);
+        });
+      });
+    }
+    bindCardClick(document);
+  </script>
+</Layout>
