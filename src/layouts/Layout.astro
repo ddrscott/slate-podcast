@@ -1,5 +1,5 @@
 ---
-import { signInUrl } from '@/lib/auth';
+import { signInUrl, isAppAdmin } from '@/lib/auth';
 import { getEnv } from '@/lib/db';
 import { analyticsHead } from '@/lib/analytics';
 
@@ -70,74 +70,57 @@ const computedOgDescription = ogDescription ?? (slate
           <span class="text-signal">{brandLabel}</span><span class="opacity-50 hidden sm:inline"> // slate.ljs.app</span>
         </a>
 
-        {/* Desktop: inline nav (md+) */}
-        <nav class="text-sm space-x-4 opacity-75 hidden md:flex items-center">
+        <nav class="text-sm flex items-center gap-4 shrink-0">
           {user ? (
             <>
-              <a href="/me" class="hover:opacity-100">My slates</a>
-              <a href="/admin" class="hover:opacity-100">Admin</a>
-              <span class="opacity-40">·</span>
-              <span class="font-mono text-xs opacity-60">{user.email}</span>
-              <form method="POST" action="/api/auth/sign-out" class="inline">
-                <button type="submit" class="hover:opacity-100 underline-offset-2 hover:underline">sign out</button>
-              </form>
+              <a href="/me" class="opacity-75 hover:opacity-100 hover:text-signal transition-colors">My slates</a>
+              <details id="account-menu" class="dropdown dropdown-end">
+                <summary class="cursor-pointer flex items-center gap-1 opacity-75 hover:opacity-100 hover:text-signal transition-colors list-none [&::-webkit-details-marker]:hidden">
+                  Account
+                  <svg viewBox="0 0 12 12" class="w-2.5 h-2.5 opacity-60" fill="currentColor" aria-hidden="true">
+                    <path d="M6 9L1 4h10z"/>
+                  </svg>
+                </summary>
+                <ul class="dropdown-content z-10 mt-2 w-60 bg-base-100 border border-base-300 rounded shadow-sm py-1 text-sm">
+                  {isAppAdmin(user.scopes) && (
+                    <li>
+                      <a href="/admin" class="block px-3 py-2 hover:bg-base-200 hover:text-signal transition-colors">Admin</a>
+                    </li>
+                  )}
+                  <li>
+                    <a href="/me#profile" class="block px-3 py-2 hover:bg-base-200 hover:text-signal transition-colors">Edit profile</a>
+                  </li>
+                  <li class="border-t border-base-300 mt-1 pt-1">
+                    <form method="POST" action="/api/auth/sign-out" class="contents">
+                      <button type="submit" class="block w-full text-left px-3 py-2 hover:bg-base-200 hover:text-signal transition-colors">
+                        <div>Sign out</div>
+                        <div class="font-mono text-xs opacity-60 mt-0.5 truncate">{user.email}</div>
+                      </button>
+                    </form>
+                  </li>
+                </ul>
+              </details>
             </>
           ) : (
-            <a href={loginHref} class="hover:opacity-100">Sign In / Sign Up</a>
+            <a href={loginHref} class="opacity-75 hover:opacity-100 hover:text-signal transition-colors">Sign In / Sign Up</a>
           )}
         </nav>
-
-        {/* Mobile: hamburger toggle (<md) */}
-        <button
-          id="mobile-nav-toggle"
-          type="button"
-          aria-label="Toggle menu"
-          aria-expanded="false"
-          aria-controls="mobile-nav-panel"
-          class="md:hidden btn btn-ghost btn-square min-h-11 h-11 w-11 -mr-2"
-        >
-          <svg class="w-5 h-5 nav-icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M4 6h16M4 12h16M4 18h16"/>
-          </svg>
-          <svg class="w-5 h-5 nav-icon-close hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M6 6l12 12M6 18L18 6"/>
-          </svg>
-        </button>
       </div>
-
-      {/* Mobile dropdown panel (<md) */}
-      <nav id="mobile-nav-panel" hidden class="md:hidden border-t border-base-300 bg-base-100">
-        <div class="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-1 text-sm">
-          {user ? (
-            <>
-              <a href="/me" class="block py-2 hover:text-signal">My slates</a>
-              <a href="/admin" class="block py-2 hover:text-signal">Admin</a>
-              <div class="py-2 font-mono text-xs opacity-60 border-t border-base-300 mt-1">{user.email}</div>
-              <form method="POST" action="/api/auth/sign-out">
-                <button type="submit" class="block w-full text-left py-2 hover:text-signal underline-offset-2 hover:underline">Sign out</button>
-              </form>
-            </>
-          ) : (
-            <a href={loginHref} class="block py-2 hover:text-signal">Sign In / Sign Up</a>
-          )}
-        </div>
-      </nav>
     </header>
 
     <script is:inline>
+      // Close the Account dropdown when the user clicks outside it. Native
+      // <details> stays open after a click on a menu item, so for in-page
+      // links (Edit profile anchors, etc.) we'd otherwise leave it hanging.
       (() => {
-        const btn = document.getElementById('mobile-nav-toggle');
-        const panel = document.getElementById('mobile-nav-panel');
-        if (!btn || !panel) return;
-        const iconOpen = btn.querySelector('.nav-icon-open');
-        const iconClose = btn.querySelector('.nav-icon-close');
-        btn.addEventListener('click', () => {
-          const opening = panel.hasAttribute('hidden');
-          if (opening) panel.removeAttribute('hidden');
-          else panel.setAttribute('hidden', '');
-          btn.setAttribute('aria-expanded', String(opening));
-          iconOpen?.classList.toggle('hidden', opening);
-          iconClose?.classList.toggle('hidden', !opening);
+        const menu = document.getElementById('account-menu');
+        if (!menu) return;
+        document.addEventListener('click', (e) => {
+          if (!menu.open) return;
+          if (!menu.contains(e.target)) menu.open = false;
+        });
+        menu.querySelectorAll('a, button').forEach((el) => {
+          el.addEventListener('click', () => { menu.open = false; });
         });
       })();
     </script>
