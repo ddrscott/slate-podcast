@@ -18,8 +18,10 @@ interface Props {
   view?: 'window' | 'all';
 }
 
+// Open is the default "available" state — quiet, so scheduled days and the
+// today ring stand out. Filled colors signal exceptions, not the norm.
 const STATUS_COLORS: Record<PublicSlot['status'], string> = {
-  open:      'bg-signal-100 text-signal-700 border-signal-200',
+  open:      'bg-base-100 text-base-content/70 border-base-300 hover:bg-signal-50',
   assigned:  'bg-amber-100 text-amber-800 border-amber-200',
   confirmed: 'bg-emerald-100 text-emerald-800 border-emerald-300',
   recorded:  'bg-sky-100 text-sky-800 border-sky-200',

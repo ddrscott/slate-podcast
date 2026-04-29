@@ -1,0 +1,136 @@
+---
+// Card representation of a suggestion. Used on the slate index "Top topic
+// suggestions" section and the full /[slate]/suggestions list. State is
+// encoded by treatment, not by a label badge:
+//   - open      → white card, full-weight title, primary action button
+//   - scheduled → muted base-200 card, deemphasized title, scheduled time inline,
+//                 small unschedule control if the viewer owns the slot
+//   - archived  → dashed border, fully muted
+
+export interface CardSuggestion {
+  id: string;
+  title: string;
+  description: string | null;
+  url: string | null;
+  upvote_count: number;
+  status: string;                          // 'open' | 'scheduled' | 'archived'
+  has_voted: number | null;
+  scheduled_slot_id: string | null;
+  scheduled_start: number | null;
+  scheduled_speaker_id: string | null;
+  scheduled_speaker_email: string | null;
+  author_email?: string | null;
+  tags?: string | null;
+}
+
+interface Props {
+  s: CardSuggestion;
+  isMember: boolean;
+  isSpeaker: boolean;
+  currentUserId: string | undefined;
+  isAdmin: boolean;
+  fmtSched: Intl.DateTimeFormat;
+  showAuthor?: boolean;
+  showTags?: boolean;
+}
+
+const {
+  s, isMember, isSpeaker, currentUserId, isAdmin, fmtSched,
+  showAuthor = false, showTags = false,
+} = Astro.props;
+
+const isOpen = s.status === 'open';
+const isScheduled = s.status === 'scheduled';
+const isArchived = s.status === 'archived';
+const canUnschedule = isScheduled && !!s.scheduled_slot_id &&
+  (s.scheduled_speaker_id === currentUserId || isAdmin);
+
+const cardBg = isScheduled ? 'bg-base-200/40' : 'bg-base-100';
+const cardBorder = s.has_voted
+  ? 'border-signal'
+  : isArchived
+    ? 'border-base-300 border-dashed'
+    : 'border-base-300';
+const titleClass = isOpen ? '' : 'opacity-70';
+
+const tagList = s.tags ? s.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+const hasMeta = (showAuthor && s.author_email) ||
+  (showTags && tagList.length > 0) ||
+  (isScheduled && s.scheduled_start);
+const hasActions = (isSpeaker && isOpen) || canUnschedule;
+---
+
+<article
+  data-suggestion-card={s.id}
+  class={`rounded border ${cardBorder} ${cardBg} transition-colors`}
+>
+  <div class="flex items-stretch gap-2 p-3">
+    {isMember ? (
+      <button
+        class="upvote shrink-0 w-12 min-h-[48px] flex flex-col items-center justify-center rounded hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-1 transition-colors"
+        data-id={s.id}
+        aria-label={`Upvote (currently ${s.upvote_count})`}
+      >
+        <span data-vote-arrow class={`text-base leading-none ${s.has_voted ? 'text-signal' : 'opacity-40'}`}>▲</span>
+        <span data-vote-count class={`font-mono text-xs leading-tight mt-0.5 ${s.has_voted ? 'text-signal font-bold' : 'opacity-70'}`}>{s.upvote_count}</span>
+      </button>
+    ) : (
+      <div class="shrink-0 w-12 min-h-[48px] flex flex-col items-center justify-center opacity-50" aria-label={`${s.upvote_count} upvotes`}>
+        <span class="text-base leading-none">▲</span>
+        <span class="font-mono text-xs leading-tight mt-0.5">{s.upvote_count}</span>
+      </div>
+    )}
+
+    <div class="flex-1 min-w-0 py-1">
+      <h3 class={`font-semibold text-base leading-snug break-words ${titleClass}`}>
+        {s.url ? (
+          <a href={s.url} target="_blank" rel="noopener noreferrer" class="hover:text-signal transition-colors">{s.title}</a>
+        ) : s.title}
+      </h3>
+
+      {s.description && (
+        <p class="text-sm opacity-70 mt-1 line-clamp-2">{s.description}</p>
+      )}
+
+      {hasMeta && (
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs font-mono opacity-60">
+          {isScheduled && s.scheduled_start && (
+            <span>{fmtSched.format(new Date(s.scheduled_start * 1000))}</span>
+          )}
+          {isScheduled && s.scheduled_speaker_email && (
+            <span class="opacity-80">→ {s.scheduled_speaker_email}</span>
+          )}
+          {showAuthor && s.author_email && (
+            <span>{s.author_email}</span>
+          )}
+          {showTags && tagList.length > 0 && (
+            <span class="opacity-80">{tagList.join(' · ')}</span>
+          )}
+        </div>
+      )}
+
+      {hasActions && (
+        <div class="mt-3 flex items-center gap-3">
+          {isSpeaker && isOpen && (
+            <button
+              class="schedule-trigger btn btn-sm btn-primary"
+              data-suggestion-id={s.id}
+              data-suggestion-title={s.title}
+            >
+              Claim &amp; schedule
+            </button>
+          )}
+          {canUnschedule && (
+            <button
+              class="unschedule-trigger text-xs opacity-60 hover:opacity-100 hover:text-error transition-colors px-2 py-1 -mx-2"
+              data-slot-id={s.scheduled_slot_id}
+              data-suggestion-title={s.title}
+            >
+              Unschedule
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  </div>
+</article>

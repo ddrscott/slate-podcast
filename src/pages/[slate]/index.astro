@@ -2,6 +2,7 @@
 import Layout from '@/layouts/Layout.astro';
 import ScheduleGrid from '@/components/ScheduleGrid';
 import ScheduleSuggestionPanel from '@/components/ScheduleSuggestionPanel.astro';
+import SuggestionCard from '@/components/SuggestionCard.astro';
 import { getDb, getEnv } from '@/lib/db';
 import { isAppAdmin, signInUrl } from '@/lib/auth';
 
@@ -164,57 +165,14 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
     ) : (
       <div class="grid md:grid-cols-2 gap-3">
         {topSuggestions.results.map(s => (
-          <div class={`card border ${s.has_voted ? 'border-signal' : 'border-base-300'} bg-base-100`}>
-            <div class="card-body py-3">
-              <div class="flex items-start gap-3">
-                {isMember ? (
-                  <button class="upvote btn btn-sm btn-ghost flex-col h-auto py-1 border border-base-300"
-                          data-id={s.id}>
-                    <span class={s.has_voted ? 'text-signal' : 'opacity-60'}>▲</span>
-                    <span class="font-mono text-xs">{s.upvote_count}</span>
-                  </button>
-                ) : (
-                  <div class="flex-col text-center text-xs opacity-60 px-2 py-1 border border-base-300 rounded">
-                    <div>▲</div>
-                    <div class="font-mono">{s.upvote_count}</div>
-                  </div>
-                )}
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2 text-xs">
-                    <span class={`badge badge-xs ${s.status === 'open' ? 'badge-success' : 'badge-primary'}`}>{s.status}</span>
-                  </div>
-                  <h3 class="font-semibold text-base mt-1 truncate">
-                    {s.url ? (
-                      <a href={s.url} target="_blank" rel="noopener noreferrer" class="link">{s.title}</a>
-                    ) : s.title}
-                  </h3>
-                  {s.description && <p class="text-sm opacity-80 mt-1 line-clamp-2">{s.description}</p>}
-                  {s.status === 'scheduled' && s.scheduled_start && (
-                    <p class="text-xs mt-2 font-mono opacity-75">
-                      📅 {fmtSched.format(new Date(s.scheduled_start * 1000))}
-                      {s.scheduled_speaker_email && <span class="opacity-60"> · {s.scheduled_speaker_email}</span>}
-                    </p>
-                  )}
-                  {isSpeaker && s.status === 'open' && (
-                    <button class="schedule-trigger btn btn-xs btn-primary mt-2"
-                            data-suggestion-id={s.id}
-                            data-suggestion-title={s.title}>
-                      Claim &amp; schedule
-                    </button>
-                  )}
-                  {s.status === 'scheduled' && s.scheduled_slot_id && (
-                    (s.scheduled_speaker_id === user?.id || isAppAdmin(user?.scopes)) && (
-                      <button class="unschedule-trigger btn btn-xs btn-ghost border border-base-300 mt-2 text-error"
-                              data-slot-id={s.scheduled_slot_id}
-                              data-suggestion-title={s.title}>
-                        Unschedule
-                      </button>
-                    )
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+          <SuggestionCard
+            s={s}
+            isMember={isMember}
+            isSpeaker={isSpeaker}
+            currentUserId={user?.id}
+            isAdmin={isAppAdmin(user?.scopes)}
+            fmtSched={fmtSched}
+          />
         ))}
       </div>
     )}
@@ -237,10 +195,18 @@ const signInHref = signInUrl(env, url.origin, `/${slate.slug}`);
         const res = await fetch(`/api/suggestions/${b.dataset.id}/vote`, { method: 'POST' });
         if (res.ok) {
           const body = await res.json();
-          b.querySelector('span:first-child').className = body.has_voted ? 'text-signal' : 'opacity-60';
-          b.querySelector('span:last-child').textContent = body.upvote_count;
-          b.parentElement.parentElement.parentElement.parentElement.className =
-            `card border ${body.has_voted ? 'border-signal' : 'border-base-300'} bg-base-100`;
+          const voted = !!body.has_voted;
+          const arrow = b.querySelector('[data-vote-arrow]');
+          const count = b.querySelector('[data-vote-count]');
+          arrow.classList.toggle('text-signal', voted);
+          arrow.classList.toggle('opacity-40', !voted);
+          count.classList.toggle('text-signal', voted);
+          count.classList.toggle('font-bold', voted);
+          count.classList.toggle('opacity-70', !voted);
+          count.textContent = body.upvote_count;
+          const card = b.closest('[data-suggestion-card]');
+          card?.classList.toggle('border-signal', voted);
+          card?.classList.toggle('border-base-300', !voted);
         } else {
           alert((await res.json().catch(() => ({}))).error ?? res.status);
         }
