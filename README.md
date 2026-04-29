@@ -1,146 +1,41 @@
 # Slate
 
-Multi-tenant podcast slot manager. The Calendly model inverted: the host posts a year of empty demand; Creators see the gaps and claim slots; Contributors feed sources into a shared pool.
+Multi-tenant podcast slot manager. Calendly inverted: the host posts a year of empty slots, Members suggest topics, Speakers claim slots and pick from the pool.
 
 Built for volunteer-run shows that don't have time to maintain a spreadsheet *and* enforce the workflow.
 
-## Roles
+**Live:** <https://slate.ljs.app>
 
-- **Coordinator** — runs the show. Defines scheduling rules, approves users, edits anything in a sheet-replacement grid.
-- **Creator** — claims slots, fills title/topic, edits their own slots, writes show notes, pulls from the contribution pool.
-- **Contributor** — submits sources/topic ideas into a shared pool. Doesn't claim slots. Sees what Creators used.
+## Quick start
+
+```bash
+npm install
+cp .dev.vars.example .dev.vars   # then fill in JWT_SECRET from auth.ljs.app
+npm run dev                      # → http://localhost:4321
+```
+
+`wrangler.toml` has `remote = true` on the D1 binding — local dev hits the production database. See [Setting up Slate for local development](docs/tutorials/local-dev-setup.md) for the long version, and [Switch local dev to a local D1 emulator](docs/how-to/switch-dev-to-local-d1.md) if you want isolation.
 
 ## Stack
 
-- **Astro 5** + React islands, TailwindCSS + DaisyUI
-- **Cloudflare Workers + D1** (SQLite) via `@astrojs/cloudflare`
-- **AG Grid Community** (MIT) — sheet-replacement view (~230 kB gzip, code-split to admin slot page)
-- **`@uiw/react-md-editor`** — show notes editor (~327 kB gzip, code-split to slot detail)
-- **`react-markdown` + `rehype-sanitize`** — public render of published notes
-- **Resend** — reminder email (sent from `Slate <hello@ljs.app>`, reuses the `ljs.app` Resend domain — no separate domain registration needed)
-- **Auth delegated to `auth.ljs.app`** — single sign-on across all `*.ljs.app` apps. Slate verifies auth.ljs.app's HMAC-signed JWT cookies locally with the shared `JWT_SECRET`. No magic-link tables, no Resend domain juggling per app, no separate sign-in UI.
+Astro 5 + React islands · TailwindCSS + DaisyUI · Cloudflare Workers + D1 + R2 · Resend · Auth delegated to [`auth.ljs.app`](https://auth.ljs.app).
 
-## Local dev
+Why these choices: [docs/explanation/stack-choices.md](docs/explanation/stack-choices.md).
 
-```bash
-# 1. install
-npm install
+## Documentation
 
-# 2. create the D1 database (one-time)
-npm run db:create
-# copy the printed database_id into wrangler.toml
+All developer and user docs live in [`docs/`](docs/), organized using the [Diataxis](https://diataxis.fr/) framework. Start at [`docs/README.md`](docs/README.md).
 
-# 3. apply schema locally
-npm run db:apply:local
-
-# 4. set local secrets
-cp .dev.vars.example .dev.vars
-# Paste your auth.ljs.app JWT_SECRET into JWT_SECRET (run
-# `wrangler secret list` inside ~/code/auth.ljs.app to recover it,
-# or check the matching value in your password manager).
-
-# 5. run
-npm run dev
-```
-
-Sign-in flow in dev: clicking "Sign in" redirects to `auth.ljs.app/login` (production), which sends a magic link from `hello@ljs.app`. The magic link redirects back to `http://localhost:4321/api/auth/callback?next=...&token=<jwt>`, which sets the cookie and lands you on your destination. `localhost` is whitelisted by auth.ljs.app's `returnTo` validator.
-
-Reminder emails: `RESEND_API_KEY` in `.dev.vars` is a placeholder; reminder emails are logged to the dev console instead of sent. Set the real key in production via `wrangler secret put`.
-
-## Deploying to `slate.ljs.app`
-
-```bash
-# 1. log in to Cloudflare
-npx wrangler login
-
-# 2. create the D1 database (writes the id you'll need next)
-npx wrangler d1 create slate-podcast
-
-# 3. paste the printed `database_id` into wrangler.toml replacing TODO_RUN_DB_CREATE
-
-# 4. apply schema to remote D1
-npm run db:apply:remote
-
-# 5. set production secrets
-npx wrangler secret put JWT_SECRET         # MUST match auth.ljs.app's JWT_SECRET
-npx wrangler secret put RESEND_API_KEY     # from resend.com (same account as auth.ljs.app)
-npx wrangler secret put RESEND_FROM        # e.g. "Slate <hello@ljs.app>"
-npx wrangler secret put CRON_SECRET        # paste any random string
-
-# 6. deploy
-npm run deploy
-```
-
-The custom domain `slate.ljs.app` is configured in `wrangler.toml` — adjust if you're hosting elsewhere.
-
-### Reminder cron
-
-`POST /api/cron/reminders` requires `Authorization: Bearer $CRON_SECRET` and:
-- finds confirmed slots ~24h and ~48h ahead,
-- emails each Creator,
-- dedupes via `sent_reminders` so duplicate calls inside the same hour are no-ops.
-
-Trigger it hourly from any external scheduler (cron-job.org is free, dead simple) or a separate Cloudflare Worker with a `[triggers] crons = ["0 * * * *"]` config.
-
-## Project layout
-
-```
-schema.sql                   D1 migration (idempotent; safe to re-run)
-wrangler.toml                Workers + D1 binding + custom domain
-astro.config.mjs             Cloudflare adapter, integrations, manualChunks
-worker-configuration.d.ts    Auto-generated by `wrangler types` (Env interface)
-src/
-  env.d.ts                   Augments Env with our secrets + App.Locals
-  middleware.ts              Hydrates Astro.locals.user from session cookie
-  layouts/Layout.astro
-  pages/
-    index.astro                              Landing
-    me/index.astro                           My dashboard
-    me/contributions.astro                   My submissions + which got used
-    [org]/[show]/index.astro                 Public schedule grid
-    [org]/[show]/slot/[id].astro             Slot detail + claim + notes
-    [org]/[show]/day/[date].astro            Multi-slot day view
-    [org]/[show]/join.astro                  Role-pick join flow
-    [org]/[show]/contribute.astro            Contributor submission form
-    [org]/[show]/contributions.astro         Contribution pool browser
-    admin/index.astro                        Coordinator dashboard
-    admin/new.astro                          Create org + show wizard
-    admin/shows/[id]/index.astro             Show overview
-    admin/shows/[id]/rules.astro             Scheduling rules CRUD
-    admin/shows/[id]/slots.astro             AG Grid sheet view
-    admin/shows/[id]/submissions.astro       Claim review queue
-    admin/shows/[id]/people.astro            Creator/Contributor approvals
-    admin/shows/[id]/contributions.astro     Moderation
-    api/                                     JSON endpoints (Astro endpoints)
-      auth/{callback,sign-out}.ts            Receives JWT from auth.ljs.app; clears cookie
-      orgs.ts, shows.ts
-      shows/[id]/join.ts
-      slots/[id]/{claim,show-notes,assets}.ts
-      slot-assets/[id].ts
-      contributions/index.ts
-      cron/reminders.ts
-      admin/shows/[id]/{rules,slots,regenerate-slots,bulk-edit,export.csv}.ts
-      admin/rules/[id].ts
-      admin/slots/[id]/[action].ts
-      admin/submissions/[id]/[action].ts
-      admin/show-members/[show_id]/[user_id]/[role]/[action].ts
-      admin/contributions/[id].ts
-  components/
-    ScheduleGrid.tsx          Year-view month grid (public)
-    SlotsAGGrid.tsx           Excel-like admin slot grid
-    ShowNotesEditor.tsx       Markdown editor + asset CRUD
-    ShowNotesView.tsx         Sanitized public render
-  lib/
-    auth.ts                   JWT verify, signInUrl, cookie helpers (no DB sessions)
-    email.ts                  Resend client (used for reminders only)
-    recurrence.ts             Tz-aware rule expansion
-    reminders.ts              48h/24h cron logic with dedupe
-    access.ts                 Permission helpers, JSON response wrappers
-    db.ts                     D1 helpers, ID generation
-scripts/
-  test-recurrence.mjs         Quick smoke test for the recurrence engine
-```
+| If you want to… | Read |
+|---|---|
+| use Slate as a Member or Speaker | [Tutorial: Getting started](docs/tutorials/getting-started.md) |
+| set up the dev env | [Tutorial: Local dev setup](docs/tutorials/local-dev-setup.md) |
+| deploy a fresh environment | [How-to: Deploy](docs/how-to/deploy.md) |
+| understand the data model | [Reference: Database schema](docs/reference/database-schema.md) |
+| understand permissions | [Reference: Roles & permissions](docs/reference/roles-and-permissions.md) |
+| know what's where in the code | [Reference: Project layout](docs/reference/project-layout.md) |
+| know why it's built this way | [Explanation index](docs/README.md#explanation--understanding-oriented) |
 
 ## Status
 
-Beta. Free during beta. See `/Users/spierce/.claude/plans/i-like-the-ability-witty-octopus.md` for the design doc.
+Beta. Free during beta.
