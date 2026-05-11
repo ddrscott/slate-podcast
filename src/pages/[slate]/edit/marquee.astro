@@ -1,0 +1,307 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import EditSubnav from '@/components/EditSubnav.astro';
+import { getDb } from '@/lib/db';
+import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+
+export const prerender = false;
+
+const slug = Astro.params.slate;
+if (!slug) return new Response('Not found', { status: 404 });
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/edit/marquee`));
+
+const db = getDb(Astro);
+const slate = await db.prepare(
+  `SELECT id, slug, name, cover_image_url, artwork_image_url, marquee_accent,
+          listen_apple_url, listen_spotify_url, listen_youtube_url, listen_rss_url
+   FROM slates WHERE slug = ?`,
+).bind(slug).first<{
+  id: string; slug: string; name: string;
+  cover_image_url: string | null;
+  artwork_image_url: string | null;
+  marquee_accent: string | null;
+  listen_apple_url: string | null;
+  listen_spotify_url: string | null;
+  listen_youtube_url: string | null;
+  listen_rss_url: string | null;
+}>();
+if (!slate) return new Response('Not found', { status: 404 });
+
+const member = await db.prepare(
+  'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
+).bind(slate.id, user.id).first<{ role: string }>();
+if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
+  return new Response('Host required', { status: 403 });
+}
+---
+
+<Layout title={`Marquee · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}
+        slateContext={{ isMember: true, isHost: true, role: 'host' }}>
+  <EditSubnav slug={slug!} isHost={true} current="marquee" />
+  <section class="py-8 max-w-3xl">
+    <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
+    <h1 class="text-2xl font-bold">Marquee</h1>
+    <p class="opacity-75 text-sm mt-1 mb-8">
+      How your slate appears on its public landing page (<code>/{slate.slug}</code>).
+      Show artwork is the centerpiece; the optional banner sits behind it as a blurred backdrop.
+    </p>
+
+    {/* ─── Show artwork (square) ─────────────────────────────────────── */}
+    <div class="mb-10 pb-8 border-b border-base-300">
+      <h2 class="font-semibold text-sm mb-1">Show artwork</h2>
+      <p class="text-xs opacity-60 mb-3">
+        Square (1:1), like an Apple Podcasts cover. Recommended ≥800×800. We auto-extract an accent color from the artwork.
+      </p>
+      <div class="flex items-start gap-4 flex-wrap">
+        <div id="artwork-preview" class="w-40 aspect-square rounded border border-base-300 bg-base-200 overflow-hidden flex items-center justify-center text-xs opacity-60">
+          {slate.artwork_image_url
+            ? <img src={slate.artwork_image_url} alt="" class="w-full h-full object-cover" />
+            : <span class="font-mono">no artwork</span>}
+        </div>
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center gap-2">
+            <span class="text-xs opacity-60 font-mono">accent:</span>
+            <span id="artwork-accent-swatch" class="inline-block w-5 h-5 rounded border border-base-300"
+                  style={`background-color: ${slate.marquee_accent ?? '#FF6A2A'};`}
+                  title={slate.marquee_accent ?? '#FF6A2A (default)'}></span>
+            <code id="artwork-accent-hex" class="text-xs opacity-70">{slate.marquee_accent ?? '#FF6A2A'}</code>
+          </div>
+          <label class="btn btn-xs btn-ghost border border-base-300 cursor-pointer w-fit">
+            <input id="artwork-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
+            {slate.artwork_image_url ? 'Replace' : 'Upload'}
+          </label>
+          {slate.artwork_image_url && (
+            <button id="artwork-remove" type="button" class="btn btn-xs btn-ghost border border-base-300 text-error w-fit">Remove</button>
+          )}
+          <span id="artwork-status" class="text-xs opacity-70"></span>
+        </div>
+      </div>
+    </div>
+
+    {/* ─── Banner (landscape, optional) ──────────────────────────────── */}
+    <div class="mb-10 pb-8 border-b border-base-300">
+      <h2 class="font-semibold text-sm mb-1">Banner image</h2>
+      <p class="text-xs opacity-60 mb-3">
+        Optional landscape image (16:9). Renders as a blurred backdrop behind the show artwork. Leave empty for a clean radial gradient.
+      </p>
+      <div class="flex items-start gap-4 flex-wrap">
+        <div id="banner-preview" class="w-56 aspect-[16/9] rounded border border-base-300 bg-base-200 overflow-hidden flex items-center justify-center text-xs opacity-60">
+          {slate.cover_image_url
+            ? <img src={slate.cover_image_url} alt="" class="w-full h-full object-cover" />
+            : <span class="font-mono">no banner</span>}
+        </div>
+        <div class="flex flex-col gap-2">
+          <label class="btn btn-xs btn-ghost border border-base-300 cursor-pointer w-fit">
+            <input id="banner-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
+            {slate.cover_image_url ? 'Replace' : 'Upload'}
+          </label>
+          {slate.cover_image_url && (
+            <button id="banner-remove" type="button" class="btn btn-xs btn-ghost border border-base-300 text-error w-fit">Remove</button>
+          )}
+          <span id="banner-status" class="text-xs opacity-70"></span>
+        </div>
+      </div>
+    </div>
+
+    {/* ─── Listen on ─────────────────────────────────────────────────── */}
+    <form id="listen-form" class="space-y-4">
+      <div>
+        <h2 class="font-semibold text-sm mb-1">Listen on</h2>
+        <p class="text-xs opacity-60 mb-3">
+          Optional outbound links. Whichever channels you fill in show up as a badge row in the hero.
+        </p>
+      </div>
+      <label class="form-control">
+        <span class="label-text text-sm">Apple Podcasts URL</span>
+        <input name="listen_apple_url" type="url" maxlength="500" class="input input-bordered input-sm font-mono"
+               placeholder="https://podcasts.apple.com/..."
+               value={slate.listen_apple_url ?? ''} />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-sm">Spotify URL</span>
+        <input name="listen_spotify_url" type="url" maxlength="500" class="input input-bordered input-sm font-mono"
+               placeholder="https://open.spotify.com/show/..."
+               value={slate.listen_spotify_url ?? ''} />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-sm">YouTube URL</span>
+        <input name="listen_youtube_url" type="url" maxlength="500" class="input input-bordered input-sm font-mono"
+               placeholder="https://youtube.com/@..."
+               value={slate.listen_youtube_url ?? ''} />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-sm">RSS feed URL</span>
+        <input name="listen_rss_url" type="url" maxlength="500" class="input input-bordered input-sm font-mono"
+               placeholder="https://example.com/feed.xml"
+               value={slate.listen_rss_url ?? ''} />
+      </label>
+      <button type="submit" class="btn btn-primary btn-sm">Save</button>
+      <p id="listen-status" class="text-sm hidden"></p>
+    </form>
+
+    <p class="mt-8 text-sm opacity-60">
+      <a href={`/${slate.slug}`} target="_blank" rel="noopener" class="link link-hover text-signal">View public marquee →</a>
+    </p>
+  </section>
+
+  <script is:inline define:vars={{ slateId: slate.id }}>
+    (() => {
+      // ── Show artwork upload ──────────────────────────────────────────
+      const input = document.getElementById('artwork-input');
+      const removeBtn = document.getElementById('artwork-remove');
+      const status = document.getElementById('artwork-status');
+      const preview = document.getElementById('artwork-preview');
+      const swatch = document.getElementById('artwork-accent-swatch');
+      const hexLabel = document.getElementById('artwork-accent-hex');
+
+      function setStatus(msg, kind) {
+        status.classList.remove('text-error', 'text-success');
+        if (kind) status.classList.add(`text-${kind}`);
+        status.textContent = msg ?? '';
+      }
+
+      // Client-side accent extraction. Decodes the file the user picked,
+      // downsamples to 16×16, picks the most-frequent quantized color
+      // outside the near-white / near-black bands. Best-effort: a failure
+      // here just sends no accent and the server leaves the column null,
+      // so the marquee renders in default Signal Orange.
+      async function extractAccent(file) {
+        try {
+          const img = await createImageBitmap(file);
+          const c = new OffscreenCanvas(16, 16);
+          const ctx = c.getContext('2d');
+          ctx.drawImage(img, 0, 0, 16, 16);
+          const { data } = ctx.getImageData(0, 0, 16, 16);
+          const counts = new Map();
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i] & 0xF0, g = data[i+1] & 0xF0, b = data[i+2] & 0xF0;
+            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+            if (lum < 30 || lum > 225) continue;
+            const key = `${r},${g},${b}`;
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+          }
+          let best = null, bestN = 0;
+          for (const [k, n] of counts) {
+            if (n > bestN) {
+              const [r, g, b] = k.split(',').map(Number);
+              best = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+              bestN = n;
+            }
+          }
+          return best;
+        } catch { return null; }
+      }
+
+      input?.addEventListener('change', async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) { setStatus('File too large (max 5 MB).', 'error'); return; }
+        setStatus('Analyzing…');
+        const accent = await extractAccent(file);
+        setStatus('Uploading…');
+        const fd = new FormData();
+        fd.append('file', file);
+        if (accent) fd.append('accent', accent);
+        const res = await fetch(`/api/slates/${slateId}/artwork`, { method: 'POST', body: fd });
+        if (res.ok) {
+          const body = await res.json();
+          preview.innerHTML = `<img src="${body.artwork_image_url}" alt="" class="w-full h-full object-cover" />`;
+          if (body.marquee_accent) {
+            swatch.style.backgroundColor = body.marquee_accent;
+            swatch.title = body.marquee_accent;
+            hexLabel.textContent = body.marquee_accent;
+          }
+          setStatus('Saved.', 'success');
+          setTimeout(() => location.reload(), 600);
+        } else {
+          const e = await res.json().catch(() => ({}));
+          setStatus(`Failed: ${e.error ?? res.status}`, 'error');
+        }
+      });
+
+      removeBtn?.addEventListener('click', async () => {
+        if (!confirm('Remove the show artwork?')) return;
+        setStatus('Removing…');
+        const res = await fetch(`/api/slates/${slateId}/artwork`, { method: 'DELETE' });
+        if (res.ok) location.reload();
+        else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
+      });
+    })();
+
+    (() => {
+      // ── Banner upload ────────────────────────────────────────────────
+      const input = document.getElementById('banner-input');
+      const removeBtn = document.getElementById('banner-remove');
+      const status = document.getElementById('banner-status');
+      const preview = document.getElementById('banner-preview');
+
+      function setStatus(msg, kind) {
+        status.classList.remove('text-error', 'text-success');
+        if (kind) status.classList.add(`text-${kind}`);
+        status.textContent = msg ?? '';
+      }
+
+      input?.addEventListener('change', async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) { setStatus('File too large (max 5 MB).', 'error'); return; }
+        setStatus('Uploading…');
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch(`/api/slates/${slateId}/cover`, { method: 'POST', body: fd });
+        if (res.ok) {
+          const body = await res.json();
+          preview.innerHTML = `<img src="${body.cover_image_url}" alt="" class="w-full h-full object-cover" />`;
+          setStatus('Saved.', 'success');
+          setTimeout(() => location.reload(), 600);
+        } else {
+          const e = await res.json().catch(() => ({}));
+          setStatus(`Failed: ${e.error ?? res.status}`, 'error');
+        }
+      });
+
+      removeBtn?.addEventListener('click', async () => {
+        if (!confirm('Remove the banner image?')) return;
+        setStatus('Removing…');
+        const res = await fetch(`/api/slates/${slateId}/cover`, { method: 'DELETE' });
+        if (res.ok) location.reload();
+        else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
+      });
+    })();
+
+    (() => {
+      // ── Listen-on form (PATCH /api/slates/:id) ───────────────────────
+      const form = document.getElementById('listen-form');
+      const status = document.getElementById('listen-status');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = new FormData(form);
+        status.classList.remove('hidden', 'text-error', 'text-success');
+        status.textContent = 'Saving…';
+        // Empty string → null on the server (clears the field).
+        const body = {
+          listen_apple_url:   (data.get('listen_apple_url')   || '').toString().trim() || null,
+          listen_spotify_url: (data.get('listen_spotify_url') || '').toString().trim() || null,
+          listen_youtube_url: (data.get('listen_youtube_url') || '').toString().trim() || null,
+          listen_rss_url:     (data.get('listen_rss_url')     || '').toString().trim() || null,
+        };
+        const res = await fetch(`/api/slates/${slateId}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          status.classList.add('text-success');
+          status.textContent = 'Saved.';
+        } else {
+          const e = await res.json().catch(() => ({}));
+          status.classList.add('text-error');
+          status.textContent = `Failed: ${e.error ?? res.status}`;
+        }
+      });
+    })();
+  </script>
+</Layout>

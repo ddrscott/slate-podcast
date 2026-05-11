@@ -18,6 +18,10 @@ export const PATCH: APIRoute = async (ctx) => {
       description?: string | null;
       timezone?: string;
       is_public?: boolean;
+      listen_apple_url?: string | null;
+      listen_spotify_url?: string | null;
+      listen_youtube_url?: string | null;
+      listen_rss_url?: string | null;
     };
 
     const fields: string[] = [];
@@ -55,6 +59,28 @@ export const PATCH: APIRoute = async (ctx) => {
     }
     if (typeof body.is_public === 'boolean') {
       fields.push('is_public = ?'); values.push(body.is_public ? 1 : 0);
+    }
+
+    // Listen-on links — null/empty clears, http(s) URLs only, ≤500 chars.
+    const URL_RE = /^https?:\/\/.+/i;
+    type ListenKey = 'listen_apple_url' | 'listen_spotify_url' | 'listen_youtube_url' | 'listen_rss_url';
+    const listenFields: Array<[ListenKey, string]> = [
+      ['listen_apple_url',   'invalid_apple_url'],
+      ['listen_spotify_url', 'invalid_spotify_url'],
+      ['listen_youtube_url', 'invalid_youtube_url'],
+      ['listen_rss_url',     'invalid_rss_url'],
+    ];
+    for (const [key, errCode] of listenFields) {
+      const raw = body[key];
+      if (raw === undefined) continue;
+      if (raw === null || (typeof raw === 'string' && raw.trim() === '')) {
+        fields.push(`${key} = ?`); values.push(null);
+        continue;
+      }
+      if (typeof raw !== 'string') throw new HttpError(400, errCode);
+      const v = raw.trim();
+      if (!URL_RE.test(v) || v.length > 500) throw new HttpError(400, errCode);
+      fields.push(`${key} = ?`); values.push(v);
     }
 
     if (fields.length === 0) throw new HttpError(400, 'nothing_to_update');

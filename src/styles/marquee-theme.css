@@ -1,0 +1,21 @@
+/* Per-slate marquee accent — scoped to the public landing-page wrapper so
+ * the override stays inside the marquee and never leaks into chrome
+ * (header, EditSubnav, dashboards). The default values reproduce today's
+ * Signal Orange palette, so a slate with no accent set renders identically
+ * to before.
+ *
+ * The `text-signal` / `bg-signal` / `border-signal` Tailwind classes are
+ * already used throughout SlateMarquee.astro; this just retargets them to
+ * a CSS variable that the marquee root sets per-slate.
+ */
+[data-marquee-theme] {
+  --ms-accent: #FF6A2A;
+  --ms-accent-soft: color-mix(in oklab, var(--ms-accent) 8%, transparent);
+}
+
+[data-marquee-theme] .text-signal      { color: var(--ms-accent); }
+[data-marquee-theme] .bg-signal        { background-color: var(--ms-accent); }
+[data-marquee-theme] .border-signal    { border-color: var(--ms-accent); }
+[data-marquee-theme] .from-signal\/5   { --tw-gradient-from: var(--ms-accent-soft) var(--tw-gradient-from-position); }
+[data-marquee-theme] .hover\:border-signal:hover { border-color: var(--ms-accent); }
+[data-marquee-theme] .hover\:text-signal:hover   { color: var(--ms-accent); }

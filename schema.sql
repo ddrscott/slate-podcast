@@ -27,8 +27,18 @@ CREATE TABLE IF NOT EXISTS users (
 -- Top-level. Created by App Admins (anyone with the auth.ljs.app `admin` or
 -- `slate:admin` JWT scope). Slug is globally unique and mutable — change it
 -- to a hard-to-guess string for soft privacy.
--- `cover_image_url` is the public URL (under /media) of the slate's
--- marquee hero artwork. Optional; null falls back to a typographic header.
+-- `cover_image_url` is the optional landscape banner rendered as a blurred
+-- backdrop behind the marquee hero. Null falls back to a radial gradient.
+-- `artwork_image_url` is the square (1:1) show cover — Apple Podcasts /
+-- Spotify-style — rendered as the centerpiece of the hero and as the
+-- fallback artwork on episode tiles. Null = no centerpiece.
+-- `marquee_accent` is a `#rrggbb` hex auto-extracted from the artwork at
+-- upload time. The marquee scopes a CSS variable to override Signal Orange
+-- only inside the public landing page; chrome stays brand-locked. Null =
+-- default Signal Orange.
+-- `listen_*_url` are optional outbound links to external distribution
+-- channels (Apple Podcasts, Spotify, YouTube, RSS). The marquee renders a
+-- "Listen on" badge row with whichever are non-null; all null = no row.
 CREATE TABLE IF NOT EXISTS slates (
   id TEXT PRIMARY KEY,
   slug TEXT UNIQUE NOT NULL,
@@ -37,6 +47,12 @@ CREATE TABLE IF NOT EXISTS slates (
   timezone TEXT NOT NULL DEFAULT 'America/Chicago',
   is_public INTEGER NOT NULL DEFAULT 1,
   cover_image_url TEXT,
+  artwork_image_url TEXT,
+  marquee_accent TEXT,
+  listen_apple_url TEXT,
+  listen_spotify_url TEXT,
+  listen_youtube_url TEXT,
+  listen_rss_url TEXT,
   created_by TEXT NOT NULL REFERENCES users(id),
   created_at INTEGER NOT NULL
 );

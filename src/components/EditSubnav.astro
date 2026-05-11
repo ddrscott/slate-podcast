@@ -10,7 +10,7 @@
 interface Props {
   slug: string;
   isHost: boolean;
-  current: 'topics' | 'archive' | 'slots' | 'rules' | 'people' | 'settings';
+  current: 'topics' | 'archive' | 'slots' | 'rules' | 'people' | 'marquee' | 'settings';
 }
 
 const { slug, isHost, current } = Astro.props;
@@ -21,6 +21,7 @@ const TABS: { key: Props['current']; label: string; href: string; hostOnly: bool
   { key: 'slots',    label: 'Slots',    href: `/${slug}/edit/slots`,     hostOnly: true  },
   { key: 'rules',    label: 'Rules',    href: `/${slug}/edit/rules`,     hostOnly: true  },
   { key: 'people',   label: 'People',   href: `/${slug}/edit/people`,    hostOnly: true  },
+  { key: 'marquee',  label: 'Marquee',  href: `/${slug}/edit/marquee`,   hostOnly: true  },
   { key: 'settings', label: 'Settings', href: `/${slug}/edit/settings`,  hostOnly: true  },
 ];
 

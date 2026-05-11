@@ -18,11 +18,20 @@ if (!slug) return new Response('Not found', { status: 404 });
 
 const db = getDb(Astro);
 const slate = await db.prepare(
-  `SELECT id, slug, name, description, timezone, is_public, cover_image_url
+  `SELECT id, slug, name, description, timezone, is_public,
+          cover_image_url, artwork_image_url, marquee_accent,
+          listen_apple_url, listen_spotify_url, listen_youtube_url, listen_rss_url
    FROM slates WHERE slug = ?`,
 ).bind(slug).first<{
   id: string; slug: string; name: string; description: string | null;
-  timezone: string; is_public: number; cover_image_url: string | null;
+  timezone: string; is_public: number;
+  cover_image_url: string | null;
+  artwork_image_url: string | null;
+  marquee_accent: string | null;
+  listen_apple_url: string | null;
+  listen_spotify_url: string | null;
+  listen_youtube_url: string | null;
+  listen_rss_url: string | null;
 }>();
 
 if (!slate) return new Response('Not found', { status: 404 });
@@ -73,7 +82,7 @@ const [hosts, upcoming, topTopics, pastEpisodes] = await Promise.all([
     bio: string | null; link: string | null; episode_count: number;
   }>(),
   db.prepare(
-    `SELECT sl.id, sl.start_time,
+    `SELECT sl.id, sl.start_time, sl.promo_image_url,
             COALESCE(sl.custom_title, sug.title) AS title,
             u.display_name AS host_display_name,
             u.email        AS host_email,
@@ -86,6 +95,7 @@ const [hosts, upcoming, topTopics, pastEpisodes] = await Promise.all([
      ORDER BY sl.start_time LIMIT 6`,
   ).bind(slate.id).all<{
     id: string; start_time: number; title: string | null;
+    promo_image_url: string | null;
     host_display_name: string | null; host_email: string | null;
     host_headshot_url: string | null;
   }>(),
