@@ -1,0 +1,202 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import ShowNotesView from '@/components/ShowNotesView';
+import { getDb, getEnv } from '@/lib/db';
+import { isAppAdmin, signInUrl } from '@/lib/auth';
+import { displayName } from '@/lib/people';
+
+export const prerender = false;
+
+// Public topic page. Anyone can read the title, description, notes, and
+// revision history. Members + hosts see an "Edit notes" button that links
+// to /edit; non-members see a sign-in CTA instead.
+//
+// This is the page upcoming-slot cards on the marquee point to when the
+// slot has a topic — listeners can read what the topic is about (and what
+// members have written) before deciding to join.
+
+const slug = Astro.params.slate;
+const topicId = Astro.params.id;
+if (!slug || !topicId) return new Response('Not found', { status: 404 });
+
+const db = getDb(Astro);
+
+const slate = await db.prepare(
+  'SELECT id, slug, name, description, timezone, is_public FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; slug: string; name: string; description: string | null; timezone: string; is_public: number }>();
+if (!slate) return new Response('Not found', { status: 404 });
+if (!slate.is_public) return new Response('Private slate', { status: 403 });
+
+const topic = await db.prepare(
+  `SELECT t.id, t.title, t.description, t.url, t.status, t.upvote_count, t.notes,
+          t.submitted_at, t.scheduled_slot_id,
+          a.email AS author_email, a.display_name AS author_display_name,
+          sl.start_time AS scheduled_start,
+          spk.email AS scheduled_host_email,
+          spk.display_name AS scheduled_host_display_name
+   FROM topics t
+   JOIN users a ON a.id = t.author_id
+   LEFT JOIN slots sl ON sl.id = t.scheduled_slot_id
+   LEFT JOIN users spk ON spk.id = sl.host_id
+   WHERE t.id = ? AND t.slate_id = ?`,
+).bind(topicId, slate.id).first<{
+  id: string; title: string; description: string | null; url: string | null;
+  status: string; upvote_count: number; notes: string | null;
+  submitted_at: number; scheduled_slot_id: string | null;
+  author_email: string; author_display_name: string | null;
+  scheduled_start: number | null;
+  scheduled_host_email: string | null;
+  scheduled_host_display_name: string | null;
+}>();
+if (!topic) return new Response('Not found', { status: 404 });
+
+const user = Astro.locals.user;
+const member = user ? await db.prepare(
+  `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string }>() : null;
+const isMember = !!member;
+const isHost = member?.role === 'host' || isAppAdmin(user?.scopes);
+const isAdmin = isAppAdmin(user?.scopes);
+const canEdit = isMember || isAdmin;
+
+const env = getEnv(Astro);
+const reqUrl = new URL(Astro.request.url);
+const signInHref = signInUrl(env, reqUrl.origin, `/${slate.slug}/topics/${topic.id}`);
+
+// Revision history — most recent first, limited. Surfaced inline below
+// the notes; clicking through to a future "diff" view is a v2.
+const revisions = await db.prepare(
+  `SELECT r.id, r.change_summary, r.created_at,
+          u.email AS author_email, u.display_name AS author_display_name
+   FROM topic_revisions r
+   LEFT JOIN users u ON u.id = r.author_id
+   WHERE r.topic_id = ?
+   ORDER BY r.created_at DESC
+   LIMIT 20`,
+).bind(topic.id).all<{
+  id: string; change_summary: string | null; created_at: number;
+  author_email: string | null; author_display_name: string | null;
+}>();
+
+const fmtScheduled = new Intl.DateTimeFormat('en-US', {
+  timeZone: slate.timezone, weekday: 'long', month: 'long', day: 'numeric',
+  hour: 'numeric', minute: '2-digit',
+});
+const fmtRevision = new Intl.DateTimeFormat('en-US', {
+  timeZone: slate.timezone, month: 'short', day: 'numeric', year: 'numeric',
+  hour: 'numeric', minute: '2-digit',
+});
+
+const authorName = displayName({ display_name: topic.author_display_name, email: topic.author_email });
+const scheduledHostName = topic.scheduled_host_email
+  ? displayName({ display_name: topic.scheduled_host_display_name, email: topic.scheduled_host_email })
+  : null;
+---
+
+<Layout
+  title={`${topic.title} · ${slate.name}`}
+  description={topic.description ?? `Pre-show notes on ${slate.name}: ${topic.title}`}
+  slate={{ name: slate.name, slug: slate.slug }}
+  slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
+>
+  <article class="py-6 md:py-8 max-w-4xl">
+    {/* Crumb back to slate */}
+    <p class="text-xs font-mono opacity-60 mb-4">
+      <a href={`/${slate.slug}`} class="link link-hover">← {slate.name}</a>
+      <span class="opacity-50"> · </span>
+      <a href={`/${slate.slug}/topics`} class="link link-hover">topics</a>
+    </p>
+
+    {/* Status badge + scheduled-on line, if applicable */}
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 text-xs font-mono">
+      <span class={`badge badge-sm ${
+        topic.status === 'open' ? 'badge-success'
+          : topic.status === 'scheduled' ? 'badge-primary'
+          : 'badge-ghost'
+      }`}>{topic.status}</span>
+      <span class="opacity-60">★ {topic.upvote_count} {topic.upvote_count === 1 ? 'vote' : 'votes'}</span>
+      {topic.scheduled_start && (
+        <span class="opacity-80">
+          → {fmtScheduled.format(new Date(topic.scheduled_start * 1000))}
+          {scheduledHostName && <> · with <span class="font-semibold">{scheduledHostName}</span></>}
+        </span>
+      )}
+    </div>
+
+    <h1 class="text-3xl md:text-5xl font-bold tracking-tight leading-tight">{topic.title}</h1>
+
+    {topic.description && (
+      <p class="mt-4 text-lg opacity-80 max-w-2xl">{topic.description}</p>
+    )}
+
+    {topic.url && (
+      <p class="mt-3 text-sm">
+        <a href={topic.url} target="_blank" rel="noopener noreferrer"
+           class="font-mono text-signal hover:underline">
+          ↗ {topic.url.replace(/^https?:\/\//, '').replace(/\/$/, '').slice(0, 80)}
+        </a>
+      </p>
+    )}
+
+    <p class="mt-4 text-xs font-mono opacity-50">
+      posted by {authorName}
+    </p>
+
+    {/* ─── Notes ────────────────────────────────────────────────────── */}
+    <section class="mt-10 border-t border-base-300 pt-8">
+      <header class="flex items-baseline justify-between mb-4">
+        <h2 class="text-xl md:text-2xl font-bold">
+          <span class="font-mono text-signal text-xs align-middle">// </span>
+          Notes
+        </h2>
+        {canEdit ? (
+          <a href={`/${slate.slug}/topics/${topic.id}/edit`} class="btn btn-sm btn-primary">
+            {topic.notes ? 'Edit notes' : 'Start notes'}
+          </a>
+        ) : (
+          <a href={signInHref} class="text-sm opacity-70 hover:text-signal hover:opacity-100">
+            Sign in to contribute →
+          </a>
+        )}
+      </header>
+
+      {topic.notes ? (
+        <ShowNotesView client:load markdown={topic.notes} />
+      ) : (
+        <div class="rounded border border-dashed border-base-300 bg-base-200/40 p-6 text-center">
+          <p class="text-sm opacity-70">
+            No notes yet.
+            {canEdit
+              ? <> <a href={`/${slate.slug}/topics/${topic.id}/edit`} class="link">Add the first ones →</a></>
+              : <> <a href={signInHref} class="link">Sign in</a> to contribute talking points, links, or context for the host.</>}
+          </p>
+        </div>
+      )}
+    </section>
+
+    {/* ─── Revision history ─────────────────────────────────────────── */}
+    {revisions.results.length > 0 && (
+      <section class="mt-10 border-t border-base-300 pt-8">
+        <h2 class="text-sm font-mono opacity-60 mb-3">// edits</h2>
+        <ul class="text-sm space-y-2">
+          {revisions.results.map(r => {
+            const editor = r.author_email
+              ? displayName({ display_name: r.author_display_name, email: r.author_email })
+              : '(unknown)';
+            return (
+              <li class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                <span class="font-mono text-xs opacity-50 w-44 shrink-0 tabular-nums">
+                  {fmtRevision.format(new Date(r.created_at * 1000))}
+                </span>
+                <span class="font-semibold">{editor}</span>
+                {r.change_summary && (
+                  <span class="opacity-70">— {r.change_summary}</span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    )}
+  </article>
+</Layout>

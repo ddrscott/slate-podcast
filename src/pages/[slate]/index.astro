@@ -82,7 +82,7 @@ const [hosts, upcoming, topTopics, pastEpisodes] = await Promise.all([
     bio: string | null; link: string | null; episode_count: number;
   }>(),
   db.prepare(
-    `SELECT sl.id, sl.start_time, sl.promo_image_url,
+    `SELECT sl.id, sl.start_time, sl.promo_image_url, sl.topic_id,
             COALESCE(sl.custom_title, sug.title) AS title,
             u.display_name AS host_display_name,
             u.email        AS host_email,
@@ -95,6 +95,7 @@ const [hosts, upcoming, topTopics, pastEpisodes] = await Promise.all([
      ORDER BY sl.start_time LIMIT 6`,
   ).bind(slate.id).all<{
     id: string; start_time: number; title: string | null;
+    topic_id: string | null;
     promo_image_url: string | null;
     host_display_name: string | null; host_email: string | null;
     host_headshot_url: string | null;

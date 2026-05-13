@@ -43,6 +43,10 @@ const { slate, isMember, isHost, isAdmin, currentUserId } = Astro.props;
       <div class="flex-1 min-w-0">
         <p class="font-mono text-xs text-signal" id="detail-panel-state-label">// loading</p>
         <h2 id="detail-panel-title" class="font-bold text-lg mt-1 break-words leading-tight">…</h2>
+        <a id="detail-panel-view-link" href="#"
+           class="hidden mt-1 text-xs font-mono text-signal hover:underline">
+          View full page + notes →
+        </a>
       </div>
       <button id="detail-panel-close" type="button" aria-label="Close"
               class="btn btn-ghost btn-sm btn-square -mr-1 -mt-1 shrink-0">
@@ -79,6 +83,7 @@ const { slate, isMember, isHost, isAdmin, currentUserId } = Astro.props;
     const backdrop = document.getElementById('detail-panel-backdrop');
     const titleEl = document.getElementById('detail-panel-title');
     const stateLabel = document.getElementById('detail-panel-state-label');
+    const viewLink = document.getElementById('detail-panel-view-link');
     const body = document.getElementById('detail-panel-body');
     const closeBtn = document.getElementById('detail-panel-close');
 
@@ -129,6 +134,10 @@ const { slate, isMember, isHost, isAdmin, currentUserId } = Astro.props;
       activeId = topicId;
       titleEl.textContent = '…';
       stateLabel.textContent = '// loading';
+      if (viewLink) {
+        viewLink.href = `/${slateSlug}/topics/${topicId}`;
+        viewLink.classList.remove('hidden');
+      }
       body.innerHTML = '<p class="text-sm opacity-60">Loading…</p>';
       root.classList.remove('hidden');
       void pane.offsetWidth;

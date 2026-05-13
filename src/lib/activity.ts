@@ -30,6 +30,7 @@ export type ActivityKind =
   | 'host_substituted'   // one Host took over a slot from another
   | 'topic_posted'
   | 'topic_archived'
+  | 'topic_notes_edited' // member/host saved an edit to a topic's notes
   | 'slot_scheduled'
   | 'slot_unscheduled'
   | 'notes_published'
@@ -131,6 +132,16 @@ export const Enqueue = {
       slateId: args.slateId,
       actorId: args.actorId,
       topicId: args.topicId,
+    });
+  },
+
+  topicNotesEdited(ctx: APIContext, args: BaseArgs & { topicId: string; changeSummary?: string }) {
+    return logActivity(ctx, {
+      kind: 'topic_notes_edited',
+      slateId: args.slateId,
+      actorId: args.actorId,
+      topicId: args.topicId,
+      meta: args.changeSummary ? { change_summary: args.changeSummary } : undefined,
     });
   },
 
@@ -321,6 +332,13 @@ const RENDERERS: Record<ActivityKind, (r: ActivityRow, ctx: RenderContext) => To
     name(actorName(r)),
     txt(' archived '),
     ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : []),
+  ],
+
+  topic_notes_edited: (r, ctx) => [
+    name(actorName(r)),
+    txt(' edited notes on '),
+    ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : [txt('a topic')]),
+    ...(r.meta?.change_summary ? [txt(` — ${r.meta.change_summary}`)] : []),
   ],
 
   slot_scheduled: (r, ctx) => [

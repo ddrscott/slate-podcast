@@ -25,6 +25,7 @@ interface UpcomingSlot {
   id: string;
   start_time: number;
   title: string | null;
+  topic_id: string | null;
   promo_image_url: string | null;
   host_display_name: string | null;
   host_email: string | null;
@@ -180,9 +181,122 @@ if (isMember || isHost) {
     </div>
   </section>
 
+  {/* ─── Up next ─────────────────────────────────────────────────────── */}
+  {/* Lead section. A listener landing here should see the very next show
+      immediately. First slot is rendered as a featured card (big art,
+      big date/time, host byline); remaining slots tile below. */}
+  {upcoming.length > 0 && (
+    <section class="py-12 md:py-16">
+      <header class="flex items-baseline justify-between mb-6">
+        <h2 class="text-2xl md:text-3xl font-bold">
+          <span class="font-mono text-signal text-xs md:text-sm align-middle">// </span>
+          Up next
+        </h2>
+        <span class="font-mono text-xs opacity-50">{slate.timezone}</span>
+      </header>
+
+      {/* Lead card — the very next show. */}
+      {(() => {
+        const s = upcoming[0];
+        const date = new Date(s.start_time * 1000);
+        const dateStr = fmtUpcoming.format(date);
+        const timeStr = fmtUpcomingTime.format(date);
+        const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
+        const tileArt = s.promo_image_url ?? slate.artwork_image_url;
+        const href = s.topic_id ? `/${slate.slug}/topics/${s.topic_id}` : `/${slate.slug}/slot/${s.id}`;
+        return (
+          <a href={href}
+             class="group block rounded-lg border border-base-300 hover:border-signal transition-colors overflow-hidden">
+            <div class="grid md:grid-cols-[minmax(0,1fr)_2fr] gap-0">
+              {tileArt ? (
+                <div class="aspect-square md:aspect-auto overflow-hidden bg-base-200 border-b md:border-b-0 md:border-r border-base-300">
+                  <img src={tileArt} alt="" class="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500" />
+                </div>
+              ) : (
+                <div class="hidden md:block bg-gradient-to-br from-signal/10 to-base-200 border-r border-base-300"></div>
+              )}
+              <div class="p-6 md:p-8 flex flex-col justify-center">
+                <div class="flex items-baseline gap-3 font-mono text-sm">
+                  <span class="text-signal font-bold">{dateStr}</span>
+                  <span class="opacity-50">·</span>
+                  <span class="opacity-70">{timeStr}</span>
+                </div>
+                <h3 class="mt-3 text-2xl md:text-3xl font-bold leading-tight line-clamp-3">
+                  {s.title ?? <span class="opacity-50 italic font-normal">No topic yet — check back soon</span>}
+                </h3>
+                {hostLabel && (
+                  <div class="mt-4 flex items-center gap-2 text-sm">
+                    {s.host_headshot_url ? (
+                      <img src={s.host_headshot_url} alt="" class="w-7 h-7 rounded-full object-cover" />
+                    ) : (
+                      <span class="w-7 h-7 rounded-full bg-base-200 border border-base-300 flex items-center justify-center font-mono text-xs opacity-60">
+                        {hostLabel.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                    <span class="opacity-80">with <span class="font-semibold">{hostLabel}</span></span>
+                  </div>
+                )}
+                <p class="mt-5 font-mono text-xs text-signal opacity-0 group-hover:opacity-100 transition-opacity">
+                  Read more →
+                </p>
+              </div>
+            </div>
+          </a>
+        );
+      })()}
+
+      {/* Remaining upcoming slots — secondary grid. */}
+      {upcoming.length > 1 && (
+        <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+          {upcoming.slice(1).map(s => {
+            const date = new Date(s.start_time * 1000);
+            const dateStr = fmtUpcoming.format(date);
+            const timeStr = fmtUpcomingTime.format(date);
+            const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
+            const tileArt = s.promo_image_url ?? slate.artwork_image_url;
+            const href = s.topic_id ? `/${slate.slug}/topics/${s.topic_id}` : `/${slate.slug}/slot/${s.id}`;
+            return (
+              <li>
+                <a href={href}
+                   class="block rounded border border-base-300 hover:border-signal transition-colors h-full overflow-hidden">
+                  {tileArt && (
+                    <div class="aspect-square overflow-hidden border-b border-base-300 bg-base-200">
+                      <img src={tileArt} alt="" class="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <div class="p-5">
+                    <div class="flex items-baseline justify-between font-mono text-xs">
+                      <span class="text-signal">{dateStr}</span>
+                      <span class="opacity-60">{timeStr}</span>
+                    </div>
+                    <div class="mt-3 font-semibold leading-snug line-clamp-3">
+                      {s.title ?? <span class="opacity-50 italic font-normal">No topic yet</span>}
+                    </div>
+                    {hostLabel && (
+                      <div class="mt-3 flex items-center gap-2 text-xs">
+                        {s.host_headshot_url ? (
+                          <img src={s.host_headshot_url} alt="" class="w-5 h-5 rounded-full object-cover" />
+                        ) : (
+                          <span class="w-5 h-5 rounded-full bg-base-200 border border-base-300 flex items-center justify-center font-mono text-[10px] opacity-60">
+                            {hostLabel.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                        <span class="opacity-70 truncate">{hostLabel}</span>
+                      </div>
+                    )}
+                  </div>
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  )}
+
   {/* ─── Hosts rail ──────────────────────────────────────────────────── */}
   {hosts.length > 0 && (
-    <section class="py-12 md:py-16">
+    <section class="py-12 md:py-16 border-t border-base-300">
       <header class="flex items-baseline justify-between mb-6">
         <h2 class="text-2xl md:text-3xl font-bold">
           <span class="font-mono text-signal text-xs md:text-sm align-middle">// </span>
@@ -227,63 +341,6 @@ if (isMember || isHost) {
             </div>
           </li>
         ))}
-      </ul>
-    </section>
-  )}
-
-  {/* ─── Up next ─────────────────────────────────────────────────────── */}
-  {upcoming.length > 0 && (
-    <section class="py-12 md:py-16 border-t border-base-300">
-      <header class="flex items-baseline justify-between mb-6">
-        <h2 class="text-2xl md:text-3xl font-bold">
-          <span class="font-mono text-signal text-xs md:text-sm align-middle">// </span>
-          Up next
-        </h2>
-        <span class="font-mono text-xs opacity-50">{slate.timezone}</span>
-      </header>
-      <ul class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {upcoming.map(s => {
-          const date = new Date(s.start_time * 1000);
-          const dateStr = fmtUpcoming.format(date);
-          const timeStr = fmtUpcomingTime.format(date);
-          const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
-          // Per-slot promo wins; otherwise the slate's show artwork stands
-          // in. Both null = no thumbnail (today's text-only card).
-          const tileArt = s.promo_image_url ?? slate.artwork_image_url;
-          return (
-            <li>
-              <a href={`/${slate.slug}/slot/${s.id}`}
-                 class="block rounded border border-base-300 hover:border-signal transition-colors h-full overflow-hidden">
-                {tileArt && (
-                  <div class="aspect-square overflow-hidden border-b border-base-300 bg-base-200">
-                    <img src={tileArt} alt="" class="w-full h-full object-cover" />
-                  </div>
-                )}
-                <div class="p-5">
-                  <div class="flex items-baseline justify-between font-mono text-xs">
-                    <span class="text-signal">{dateStr}</span>
-                    <span class="opacity-60">{timeStr}</span>
-                  </div>
-                  <div class="mt-3 font-semibold leading-snug line-clamp-3">
-                    {s.title ?? <span class="opacity-50 italic font-normal">No topic yet</span>}
-                  </div>
-                  {hostLabel && (
-                    <div class="mt-3 flex items-center gap-2 text-xs">
-                      {s.host_headshot_url ? (
-                        <img src={s.host_headshot_url} alt="" class="w-5 h-5 rounded-full object-cover" />
-                      ) : (
-                        <span class="w-5 h-5 rounded-full bg-base-200 border border-base-300 flex items-center justify-center font-mono text-[10px] opacity-60">
-                          {hostLabel.charAt(0).toUpperCase()}
-                        </span>
-                      )}
-                      <span class="opacity-70 truncate">{hostLabel}</span>
-                    </div>
-                  )}
-                </div>
-              </a>
-            </li>
-          );
-        })}
       </ul>
     </section>
   )}

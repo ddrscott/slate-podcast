@@ -1,0 +1,78 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import TopicNotesEditor from '@/components/TopicNotesEditor';
+import { getDb, getEnv } from '@/lib/db';
+import { isAppAdmin, signInUrl } from '@/lib/auth';
+
+export const prerender = false;
+
+// Edit pre-show notes for a topic. Member-gated: visitors bounce to
+// sign-in (returnTo=this page), signed-in non-members redirect to the
+// public topic page (where they're prompted to join).
+//
+// Edits are POSTed to /api/topics/[id]/notes by the React component
+// below; on success the component hard-navigates to the topic page.
+
+const slug = Astro.params.slate;
+const topicId = Astro.params.id;
+if (!slug || !topicId) return new Response('Not found', { status: 404 });
+
+const db = getDb(Astro);
+const slate = await db.prepare(
+  'SELECT id, slug, name, is_public FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; slug: string; name: string; is_public: number }>();
+if (!slate) return new Response('Not found', { status: 404 });
+if (!slate.is_public) return new Response('Private slate', { status: 403 });
+
+const topic = await db.prepare(
+  'SELECT id, slate_id, title, notes FROM topics WHERE id = ? AND slate_id = ?',
+).bind(topicId, slate.id).first<{ id: string; slate_id: string; title: string; notes: string | null }>();
+if (!topic) return new Response('Not found', { status: 404 });
+
+const user = Astro.locals.user;
+const env = getEnv(Astro);
+const reqUrl = new URL(Astro.request.url);
+if (!user) {
+  return Astro.redirect(signInUrl(env, reqUrl.origin, `/${slate.slug}/topics/${topic.id}/edit`));
+}
+
+const member = await db.prepare(
+  `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string }>();
+const isMember = !!member;
+const isHost = member?.role === 'host' || isAppAdmin(user.scopes);
+const isAdmin = isAppAdmin(user.scopes);
+
+// Non-members visiting the edit URL get sent to the public topic page,
+// where the "Sign in to contribute / Join as a Member" affordance lives.
+if (!isMember && !isAdmin) {
+  return Astro.redirect(`/${slate.slug}/topics/${topic.id}`);
+}
+---
+
+<Layout
+  title={`Edit notes · ${topic.title}`}
+  slate={{ name: slate.name, slug: slate.slug }}
+  slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
+>
+  <article class="py-6 md:py-8 max-w-4xl">
+    <p class="text-xs font-mono opacity-60 mb-4">
+      <a href={`/${slate.slug}/topics/${topic.id}`} class="link link-hover">← {topic.title}</a>
+    </p>
+
+    <h1 class="text-2xl md:text-3xl font-bold mb-2">Editing notes</h1>
+    <p class="text-sm opacity-70 mb-6">
+      <span class="font-mono">// {topic.title}</span>
+      <br />
+      Anyone with member access can edit. Every save creates a revision
+      with your name on it — nothing is lost, just superseded.
+    </p>
+
+    <TopicNotesEditor
+      client:load
+      slateSlug={slate.slug}
+      topicId={topic.id}
+      initialBody={topic.notes}
+    />
+  </article>
+</Layout>

@@ -139,6 +139,10 @@ CREATE INDEX IF NOT EXISTS idx_slot_assets_slot ON slot_assets(slot_id);
 -- `fingerprint` is a normalized title for duplicate detection.
 -- `upvote_count` is denormalized — kept in sync at write time.
 -- `status` flips to 'scheduled' when a host marries it to a slot.
+-- `notes` is the current (denormalized) body of the collaborative pre-show
+-- notes — markdown. Members and hosts can edit; every save also writes a
+-- topic_revisions row for attribution and history. Last-write-wins on the
+-- denormalized field.
 CREATE TABLE IF NOT EXISTS topics (
   id TEXT PRIMARY KEY,
   slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
@@ -154,7 +158,8 @@ CREATE TABLE IF NOT EXISTS topics (
   scheduled_slot_id TEXT REFERENCES slots(id) ON DELETE SET NULL,
   scheduled_at INTEGER,
   scheduled_by TEXT REFERENCES users(id),
-  submitted_at INTEGER NOT NULL
+  submitted_at INTEGER NOT NULL,
+  notes TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_topics_slate_status ON topics(slate_id, status);
 CREATE INDEX IF NOT EXISTS idx_topics_slate_fp ON topics(slate_id, fingerprint);
@@ -167,6 +172,21 @@ CREATE TABLE IF NOT EXISTS topic_votes (
   PRIMARY KEY (topic_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_topic_votes_user ON topic_votes(user_id);
+
+-- Append-only history of every notes save on a topic. The current body
+-- lives denormalized on topics.notes for fast reads; topic_revisions is
+-- the source of truth for attribution and recovery.
+-- `change_summary` is optional — the editor can describe what they changed
+-- in one line ("added link to Lev's interview"). Like a git commit message.
+CREATE TABLE IF NOT EXISTS topic_revisions (
+  id              TEXT PRIMARY KEY,
+  topic_id        TEXT NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+  body            TEXT NOT NULL,
+  author_id       TEXT REFERENCES users(id) ON DELETE SET NULL,
+  change_summary  TEXT,
+  created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_topic_revisions_topic ON topic_revisions(topic_id, created_at DESC);
 
 -- ─── Activity log ──────────────────────────────────────────────────────────
 -- Per-slate event stream. New events appended on the relevant mutation
