@@ -24,10 +24,14 @@ const slot = await db.prepare(
           sl.show_notes, sl.show_notes_published_at, sl.promo_image_url,
           sug.title AS topic_title, sug.description AS topic_description,
           spk.email AS host_email, spk.display_name AS host_display_name,
-          spk.headshot_url AS host_headshot_url
+          spk.headshot_url AS host_headshot_url,
+          sm.show_name      AS host_show_name,
+          sm.show_logo_url  AS host_show_logo_url
    FROM slots sl
    LEFT JOIN topics sug ON sug.id = sl.topic_id
    LEFT JOIN users spk ON spk.id = sl.host_id
+   LEFT JOIN slate_members sm
+     ON sm.slate_id = sl.slate_id AND sm.user_id = sl.host_id
    WHERE sl.id = ? AND sl.slate_id = ?`,
 ).bind(slotId, slate.id).first<any>();
 if (!slot) return new Response('Slot not found', { status: 404 });
@@ -90,10 +94,15 @@ const availableTopics = isHost ? await db.prepare(
         <>
           <span class="opacity-50">·</span>
           <span class="flex items-center gap-1.5">
-            {slot.host_headshot_url
-              ? <img src={slot.host_headshot_url} alt="" class="w-5 h-5 rounded-full object-cover" />
-              : <span class="w-5 h-5 rounded-full bg-base-200 inline-flex items-center justify-center text-[10px] font-bold opacity-70">{(hostName ?? '').charAt(0).toUpperCase()}</span>}
-            <span class="opacity-70">{hostName}</span>
+            {slot.host_show_logo_url
+              ? <img src={slot.host_show_logo_url} alt="" class="w-5 h-5 rounded object-cover" />
+              : slot.host_headshot_url
+                ? <img src={slot.host_headshot_url} alt="" class="w-5 h-5 rounded-full object-cover" />
+                : <span class="w-5 h-5 rounded-full bg-base-200 inline-flex items-center justify-center text-[10px] font-bold opacity-70">{(hostName ?? '').charAt(0).toUpperCase()}</span>}
+            <span class="opacity-70">
+              {slot.host_show_name ?? hostName}
+              {slot.host_show_name && hostName && <span class="opacity-60"> · {hostName}</span>}
+            </span>
           </span>
         </>
       )}
@@ -251,7 +260,10 @@ const availableTopics = isHost ? await db.prepare(
 
     document.getElementById('claim-btn')?.addEventListener('click', async () => {
       setStatus('Claiming…');
-      const res = await fetch(`/api/slots/${slotId}/assign-host`, { method: 'POST' });
+      // /claim is the bare-claim endpoint — open → assigned, topic_id
+      // stays null. The topic picker below appears on reload so the host
+      // can attach a topic later (or never).
+      const res = await fetch(`/api/slots/${slotId}/claim`, { method: 'POST' });
       if (res.ok) location.reload();
       else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
     });

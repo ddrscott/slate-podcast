@@ -61,6 +61,10 @@ CREATE INDEX IF NOT EXISTS idx_slates_slug ON slates(slug);
 -- ─── Slate membership ──────────────────────────────────────────────────────
 -- Open signup as 'member' via /[slate]/join. Promotion to 'host' is
 -- App-Admin only. A user has at most one role per slate (host > member).
+-- `show_name` and `show_logo_url` are a host's *show* identity on this
+-- slate — distinct from their personal display_name + headshot. Both
+-- nullable; the marquee falls back to the personal profile + slate
+-- artwork when they're absent.
 CREATE TABLE IF NOT EXISTS slate_members (
   slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -68,6 +72,8 @@ CREATE TABLE IF NOT EXISTS slate_members (
   joined_at INTEGER NOT NULL,
   promoted_at INTEGER,
   promoted_by TEXT REFERENCES users(id),
+  show_name TEXT,
+  show_logo_url TEXT,
   PRIMARY KEY (slate_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_slate_members_user ON slate_members(user_id);

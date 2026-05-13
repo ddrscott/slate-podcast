@@ -18,6 +18,8 @@ interface Host {
   tagline: string | null;
   bio: string | null;
   link: string | null;
+  show_name: string | null;
+  show_logo_url: string | null;
   episode_count: number;
 }
 
@@ -30,6 +32,8 @@ interface UpcomingSlot {
   host_display_name: string | null;
   host_email: string | null;
   host_headshot_url: string | null;
+  host_show_name: string | null;
+  host_show_logo_url: string | null;
 }
 
 interface TopTopic {
@@ -202,7 +206,9 @@ if (isMember || isHost) {
         const dateStr = fmtUpcoming.format(date);
         const timeStr = fmtUpcomingTime.format(date);
         const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
-        const tileArt = s.promo_image_url ?? slate.artwork_image_url;
+        // Render precedence — see migration 0005 header.
+        const tileArt = s.promo_image_url ?? s.host_show_logo_url ?? slate.artwork_image_url;
+        const showName = s.host_show_name;
         const href = s.topic_id ? `/${slate.slug}/topics/${s.topic_id}` : `/${slate.slug}/slot/${s.id}`;
         return (
           <a href={href}
@@ -233,7 +239,14 @@ if (isMember || isHost) {
                         {hostLabel.charAt(0).toUpperCase()}
                       </span>
                     )}
-                    <span class="opacity-80">with <span class="font-semibold">{hostLabel}</span></span>
+                    {showName ? (
+                      <span class="opacity-80">
+                        <span class="font-semibold">{showName}</span>
+                        <span class="opacity-60"> · {hostLabel}</span>
+                      </span>
+                    ) : (
+                      <span class="opacity-80">with <span class="font-semibold">{hostLabel}</span></span>
+                    )}
                   </div>
                 )}
                 <p class="mt-5 font-mono text-xs text-signal opacity-0 group-hover:opacity-100 transition-opacity">
@@ -253,7 +266,8 @@ if (isMember || isHost) {
             const dateStr = fmtUpcoming.format(date);
             const timeStr = fmtUpcomingTime.format(date);
             const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
-            const tileArt = s.promo_image_url ?? slate.artwork_image_url;
+            const tileArt = s.promo_image_url ?? s.host_show_logo_url ?? slate.artwork_image_url;
+            const showName = s.host_show_name;
             const href = s.topic_id ? `/${slate.slug}/topics/${s.topic_id}` : `/${slate.slug}/slot/${s.id}`;
             return (
               <li>
@@ -281,7 +295,7 @@ if (isMember || isHost) {
                             {hostLabel.charAt(0).toUpperCase()}
                           </span>
                         )}
-                        <span class="opacity-70 truncate">{hostLabel}</span>
+                        <span class="opacity-70 truncate">{showName ?? hostLabel}</span>
                       </div>
                     )}
                   </div>
@@ -307,10 +321,20 @@ if (isMember || isHost) {
         </span>
       </header>
       <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {hosts.map(h => (
+        {hosts.map(h => {
+          // Show identity wins for the avatar tile (square logo, like an
+          // album cover); falls back to the host's headshot (circular,
+          // personal). Different shapes signal which is which.
+          const personName = hostName(h);
+          const primary = h.show_name ?? personName;
+          const secondary = h.show_name ? personName : null;
+          return (
           <li class="group flex gap-4 p-4 rounded border border-base-300 hover:border-signal transition-colors">
             <div class="shrink-0">
-              {h.headshot_url ? (
+              {h.show_logo_url ? (
+                <img src={h.show_logo_url} alt=""
+                     class="w-16 h-16 rounded object-cover border border-base-300" />
+              ) : h.headshot_url ? (
                 <img src={h.headshot_url} alt=""
                      class="w-16 h-16 rounded-full object-cover border border-base-300" />
               ) : (
@@ -321,11 +345,14 @@ if (isMember || isHost) {
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex items-baseline gap-2">
-                <span class="font-bold truncate">{hostName(h)}</span>
+                <span class="font-bold truncate">{primary}</span>
                 {h.episode_count > 0 && (
                   <span class="font-mono text-xs opacity-50 shrink-0">{h.episode_count} ep</span>
                 )}
               </div>
+              {secondary && (
+                <p class="text-xs opacity-60 mt-0.5 line-clamp-1">hosted by {secondary}</p>
+              )}
               {h.tagline && (
                 <p class="text-xs opacity-70 mt-0.5 line-clamp-1">{h.tagline}</p>
               )}
@@ -340,7 +367,8 @@ if (isMember || isHost) {
               )}
             </div>
           </li>
-        ))}
+          );
+        })}
       </ul>
     </section>
   )}

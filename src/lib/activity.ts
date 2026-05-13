@@ -31,6 +31,7 @@ export type ActivityKind =
   | 'topic_posted'
   | 'topic_archived'
   | 'topic_notes_edited' // member/host saved an edit to a topic's notes
+  | 'slot_claimed'       // host took a slot without a topic
   | 'slot_scheduled'
   | 'slot_unscheduled'
   | 'notes_published'
@@ -142,6 +143,17 @@ export const Enqueue = {
       actorId: args.actorId,
       topicId: args.topicId,
       meta: args.changeSummary ? { change_summary: args.changeSummary } : undefined,
+    });
+  },
+
+  // Bare claim — host takes an open slot without a topic. status flips
+  // open → assigned. Topic-bearing claims still go through slotScheduled.
+  slotClaimed(ctx: APIContext, args: BaseArgs & { slotId: string }) {
+    return logActivity(ctx, {
+      kind: 'slot_claimed',
+      slateId: args.slateId,
+      actorId: args.actorId,
+      slotId: args.slotId,
     });
   },
 
@@ -339,6 +351,15 @@ const RENDERERS: Record<ActivityKind, (r: ActivityRow, ctx: RenderContext) => To
     txt(' edited notes on '),
     ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : [txt('a topic')]),
     ...(r.meta?.change_summary ? [txt(` — ${r.meta.change_summary}`)] : []),
+  ],
+
+  slot_claimed: (r, ctx) => [
+    name(actorName(r)),
+    txt(' claimed '),
+    ...(r.slot_start && r.slot_id
+      ? [slotLink(ctx.slug, r.slot_id, ctx.fmtSlotTime(r.slot_start))]
+      : [txt('a slot')]),
+    txt(' — no topic yet'),
   ],
 
   slot_scheduled: (r, ctx) => [

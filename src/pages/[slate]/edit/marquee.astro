@@ -30,11 +30,17 @@ const slate = await db.prepare(
 if (!slate) return new Response('Not found', { status: 404 });
 
 const member = await db.prepare(
-  'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
-).bind(slate.id, user.id).first<{ role: string }>();
+  'SELECT role, show_name, show_logo_url FROM slate_members WHERE slate_id = ? AND user_id = ?',
+).bind(slate.id, user.id).first<{ role: string; show_name: string | null; show_logo_url: string | null }>();
 if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
   return new Response('Host required', { status: 403 });
 }
+
+// "Your show" identity only makes sense when the caller is themselves a
+// host on this slate. App Admins who haven't been promoted on the slate
+// can use the other sections (slate-wide settings) but not edit a host
+// identity that doesn't exist.
+const callerIsSlateHost = member?.role === 'host';
 ---
 
 <Layout title={`Marquee · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}
@@ -47,6 +53,50 @@ if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
       How your slate appears on its public landing page (<code>/{slate.slug}</code>).
       Show artwork is the centerpiece; the optional banner sits behind it as a blurred backdrop.
     </p>
+
+    {/* ─── Your show (per-host) ──────────────────────────────────────── */}
+    {/* A host's show identity on this slate — distinct from their personal
+        display_name and headshot. Used on the marquee Up Next cards and
+        the Hosts grid so listeners see the show brand, not just the
+        person. Hosts edit only their own row; the marquee config below
+        belongs to the slate as a whole. */}
+    {callerIsSlateHost && (
+      <div class="mb-10 pb-8 border-b border-base-300">
+        <h2 class="font-semibold text-sm mb-1">Your show</h2>
+        <p class="text-xs opacity-60 mb-3">
+          The name and logo we show when one of your episodes appears on the marquee.
+          Leave blank to fall back to your personal display name and headshot.
+        </p>
+
+        <div class="flex items-start gap-4 flex-wrap">
+          <div id="show-logo-preview" class="w-32 aspect-square rounded border border-base-300 bg-base-200 overflow-hidden flex items-center justify-center text-xs opacity-60">
+            {member!.show_logo_url
+              ? <img src={member!.show_logo_url} alt="" class="w-full h-full object-cover" />
+              : <span class="font-mono">no logo</span>}
+          </div>
+          <div class="flex flex-col gap-2 flex-1 min-w-[16rem]">
+            <label class="form-control">
+              <span class="label-text text-sm">Show name</span>
+              <input id="show-name-input" type="text" maxlength="120"
+                     class="input input-bordered input-sm"
+                     placeholder='e.g. "The Justice Hour"'
+                     value={member!.show_name ?? ''} />
+            </label>
+            <div class="flex flex-wrap gap-2 items-center">
+              <button id="show-name-save" type="button" class="btn btn-sm btn-primary">Save name</button>
+              <label class="btn btn-sm btn-ghost border border-base-300 cursor-pointer">
+                <input id="show-logo-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
+                {member!.show_logo_url ? 'Replace logo' : 'Upload logo'}
+              </label>
+              {member!.show_logo_url && (
+                <button id="show-logo-remove" type="button" class="btn btn-sm btn-ghost border border-base-300 text-error">Remove logo</button>
+              )}
+              <span id="show-status" class="text-xs opacity-70"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* ─── Show artwork (square) ─────────────────────────────────────── */}
     <div class="mb-10 pb-8 border-b border-base-300">
@@ -146,7 +196,7 @@ if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
     </p>
   </section>
 
-  <script is:inline define:vars={{ slateId: slate.id }}>
+  <script is:inline define:vars={{ slateId: slate.id, userId: user.id, callerIsSlateHost }}>
     (() => {
       // ── Show artwork upload ──────────────────────────────────────────
       const input = document.getElementById('artwork-input');
@@ -266,6 +316,63 @@ if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
         if (!confirm('Remove the banner image?')) return;
         setStatus('Removing…');
         const res = await fetch(`/api/slates/${slateId}/cover`, { method: 'DELETE' });
+        if (res.ok) location.reload();
+        else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
+      });
+    })();
+
+    (() => {
+      // ── Your show (per-host show_name + show_logo_url) ───────────────
+      if (!callerIsSlateHost) return;
+
+      const nameInput = document.getElementById('show-name-input');
+      const nameSave  = document.getElementById('show-name-save');
+      const logoInput = document.getElementById('show-logo-input');
+      const logoRemove = document.getElementById('show-logo-remove');
+      const status   = document.getElementById('show-status');
+      const preview  = document.getElementById('show-logo-preview');
+
+      function setStatus(msg, kind) {
+        status.classList.remove('text-error', 'text-success');
+        if (kind) status.classList.add(`text-${kind}`);
+        status.textContent = msg ?? '';
+      }
+
+      nameSave?.addEventListener('click', async () => {
+        setStatus('Saving…');
+        const v = nameInput.value.trim();
+        const res = await fetch(`/api/slates/${slateId}/hosts/${userId}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ show_name: v === '' ? null : v }),
+        });
+        if (res.ok) setStatus('Saved.', 'success');
+        else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
+      });
+
+      logoInput?.addEventListener('change', async () => {
+        const file = logoInput.files?.[0];
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) { setStatus('File too large (max 5 MB).', 'error'); return; }
+        setStatus('Uploading…');
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch(`/api/slates/${slateId}/hosts/${userId}/show-logo`, { method: 'POST', body: fd });
+        if (res.ok) {
+          const body = await res.json();
+          preview.innerHTML = `<img src="${body.show_logo_url}" alt="" class="w-full h-full object-cover" />`;
+          setStatus('Saved.', 'success');
+          setTimeout(() => location.reload(), 600);
+        } else {
+          const e = await res.json().catch(() => ({}));
+          setStatus(`Failed: ${e.error ?? res.status}`, 'error');
+        }
+      });
+
+      logoRemove?.addEventListener('click', async () => {
+        if (!confirm('Remove your show logo?')) return;
+        setStatus('Removing…');
+        const res = await fetch(`/api/slates/${slateId}/hosts/${userId}/show-logo`, { method: 'DELETE' });
         if (res.ok) location.reload();
         else { const e = await res.json().catch(() => ({})); setStatus(`Failed: ${e.error ?? res.status}`, 'error'); }
       });

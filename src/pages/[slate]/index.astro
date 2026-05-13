@@ -67,6 +67,7 @@ if (user && (isMember || isAdmin)) {
 const [hosts, upcoming, topTopics, pastEpisodes] = await Promise.all([
   db.prepare(
     `SELECT u.id, u.display_name, u.email, u.headshot_url, u.tagline, u.bio, u.link,
+            sm.show_name, sm.show_logo_url,
             COUNT(DISTINCT CASE
               WHEN sl.start_time < unixepoch() AND sl.status IN ('recorded','published')
               THEN sl.id END) AS episode_count
@@ -75,21 +76,27 @@ const [hosts, upcoming, topTopics, pastEpisodes] = await Promise.all([
      LEFT JOIN slots sl ON sl.host_id = u.id AND sl.slate_id = sm.slate_id
      WHERE sm.slate_id = ? AND sm.role = 'host'
      GROUP BY u.id
-     ORDER BY episode_count DESC, COALESCE(u.display_name, u.email)`,
+     ORDER BY episode_count DESC, COALESCE(sm.show_name, u.display_name, u.email)`,
   ).bind(slate.id).all<{
     id: string; display_name: string | null; email: string;
     headshot_url: string | null; tagline: string | null;
-    bio: string | null; link: string | null; episode_count: number;
+    bio: string | null; link: string | null;
+    show_name: string | null; show_logo_url: string | null;
+    episode_count: number;
   }>(),
   db.prepare(
     `SELECT sl.id, sl.start_time, sl.promo_image_url, sl.topic_id,
             COALESCE(sl.custom_title, sug.title) AS title,
             u.display_name AS host_display_name,
             u.email        AS host_email,
-            u.headshot_url AS host_headshot_url
+            u.headshot_url AS host_headshot_url,
+            sm.show_name      AS host_show_name,
+            sm.show_logo_url  AS host_show_logo_url
      FROM slots sl
      LEFT JOIN topics sug ON sug.id = sl.topic_id
      LEFT JOIN users u ON u.id = sl.host_id
+     LEFT JOIN slate_members sm
+       ON sm.slate_id = sl.slate_id AND sm.user_id = sl.host_id
      WHERE sl.slate_id = ? AND sl.start_time >= unixepoch()
        AND sl.status NOT IN ('cancelled')
      ORDER BY sl.start_time LIMIT 6`,
@@ -99,6 +106,7 @@ const [hosts, upcoming, topTopics, pastEpisodes] = await Promise.all([
     promo_image_url: string | null;
     host_display_name: string | null; host_email: string | null;
     host_headshot_url: string | null;
+    host_show_name: string | null; host_show_logo_url: string | null;
   }>(),
   // Topic Pool — open AND not already attached to a slot. The status flag
   // and scheduled_slot_id should agree (status flips to 'scheduled' when a
