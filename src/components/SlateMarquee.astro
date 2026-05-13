@@ -345,13 +345,16 @@ if (isMember || isHost) {
     </section>
   )}
 
-  {/* ─── In the pool ─────────────────────────────────────────────────── */}
+  {/* ─── Topic Pool ───────────────────────────────────────────────────── */}
+  {/* Unscheduled, voteable topics. Anything already attached to an
+      upcoming slot belongs in "Up next" instead; this list filters it
+      out at query time so the marquee can't double-show a topic. */}
   {topTopics.length > 0 && (
     <section id="topics" class="py-12 md:py-16 border-t border-base-300">
       <header class="flex items-baseline justify-between mb-6">
         <h2 class="text-2xl md:text-3xl font-bold">
           <span class="font-mono text-signal text-xs md:text-sm align-middle">// </span>
-          In the pool
+          Topic Pool
         </h2>
         <a href={`/${slate.slug}/topics`} class="text-sm opacity-70 hover:text-signal hover:opacity-100">
           See all →
@@ -359,14 +362,20 @@ if (isMember || isHost) {
       </header>
       <ol class="space-y-1 max-w-3xl">
         {topTopics.map((t, i) => (
-          <li class="flex items-baseline gap-4 py-3 border-b border-base-300/50 last:border-b-0">
-            <span class="font-mono text-xs opacity-40 w-6 shrink-0 tabular-nums">
-              {String(i + 1).padStart(2, '0')}
-            </span>
-            <span class="font-mono text-sm text-signal w-12 shrink-0 tabular-nums">
-              ★ {t.upvote_count}
-            </span>
-            <span class="flex-1 truncate">{t.title}</span>
+          <li>
+            <a href={`/${slate.slug}/topics/${t.id}`}
+               class="group flex items-baseline gap-4 py-3 border-b border-base-300/50 last:border-b-0 -mx-2 px-2 rounded hover:bg-base-200/40 transition-colors">
+              <span class="font-mono text-xs opacity-40 w-6 shrink-0 tabular-nums">
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <span class="font-mono text-sm text-signal w-12 shrink-0 tabular-nums">
+                ★ {t.upvote_count}
+              </span>
+              <span class="flex-1 truncate group-hover:text-signal transition-colors">{t.title}</span>
+              <span class="font-mono text-xs opacity-0 group-hover:opacity-60 transition-opacity shrink-0">
+                read →
+              </span>
+            </a>
           </li>
         ))}
       </ol>

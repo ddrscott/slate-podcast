@@ -100,9 +100,13 @@ const [hosts, upcoming, topTopics, pastEpisodes] = await Promise.all([
     host_display_name: string | null; host_email: string | null;
     host_headshot_url: string | null;
   }>(),
+  // Topic Pool — open AND not already attached to a slot. The status flag
+  // and scheduled_slot_id should agree (status flips to 'scheduled' when a
+  // topic gets a slot), but we filter on both as a belt-and-suspenders so
+  // a topic can't appear under "Up next" and in the pool simultaneously.
   db.prepare(
     `SELECT id, title, upvote_count FROM topics
-     WHERE slate_id = ? AND status = 'open'
+     WHERE slate_id = ? AND status = 'open' AND scheduled_slot_id IS NULL
      ORDER BY upvote_count DESC, submitted_at DESC LIMIT 5`,
   ).bind(slate.id).all<{ id: string; title: string; upvote_count: number }>(),
   db.prepare(
