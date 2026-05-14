@@ -26,6 +26,14 @@ const DAYS = [
   { key: 'sat', label: 'Sat' },
 ] as const;
 
+// Same list the slate-settings page uses; consistent across the app.
+const TIMEZONES = [
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+  'America/Phoenix', 'America/Anchorage', 'Pacific/Honolulu',
+  'UTC',
+  'Europe/London', 'Europe/Berlin', 'Australia/Sydney',
+] as const;
+
 interface MatchedSlot {
   id: string;
   start_time: number;
@@ -46,6 +54,8 @@ export default function SlotAssigner({
   const [to, setTo] = useState(defaultTo);
   const [days, setDays] = useState<Set<string>>(new Set());
   const [every, setEvery] = useState(1);
+  const [atTime, setAtTime] = useState('');           // "" = any time on the chosen days
+  const [atTimezone, setAtTimezone] = useState(slateTimezone);
   const [includeAssigned, setIncludeAssigned] = useState(false);
 
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -69,19 +79,27 @@ export default function SlotAssigner({
     setApplied(null);
   }
 
+  function buildBody(dryRun: boolean) {
+    return {
+      from_date: from,
+      to_date: to,
+      days_of_week: [...days],
+      every_n_weeks: every,
+      // Only send time params when the user actually entered a time —
+      // empty string means "any time on the chosen days", which the
+      // server reads as the absence of the field.
+      ...(atTime ? { at_time: atTime, at_timezone: atTimezone } : {}),
+      include_assigned: includeAssigned,
+      dry_run: dryRun,
+    };
+  }
+
   const runPreview = useCallback(async () => {
     setPreviewing(true); setError(''); setApplied(null);
     const res = await fetch(`/api/slates/${slateId}/shows/${showId}/assign-slots`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        from_date: from,
-        to_date: to,
-        days_of_week: [...days],
-        every_n_weeks: every,
-        include_assigned: includeAssigned,
-        dry_run: true,
-      }),
+      body: JSON.stringify(buildBody(true)),
     });
     setPreviewing(false);
     if (res.ok) {
@@ -91,7 +109,7 @@ export default function SlotAssigner({
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       setError(err.error ?? `Preview failed (${res.status})`);
     }
-  }, [slateId, showId, from, to, days, every, includeAssigned]);
+  }, [slateId, showId, from, to, days, every, atTime, atTimezone, includeAssigned]);
 
   const apply = useCallback(async () => {
     if (!preview) return;
@@ -105,14 +123,7 @@ export default function SlotAssigner({
     const res = await fetch(`/api/slates/${slateId}/shows/${showId}/assign-slots`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        from_date: from,
-        to_date: to,
-        days_of_week: [...days],
-        every_n_weeks: every,
-        include_assigned: includeAssigned,
-        dry_run: false,
-      }),
+      body: JSON.stringify(buildBody(false)),
     });
     setApplying(false);
     if (res.ok) {
@@ -123,7 +134,7 @@ export default function SlotAssigner({
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       setError(err.error ?? `Apply failed (${res.status})`);
     }
-  }, [preview, slateId, showId, showName, from, to, days, every, includeAssigned]);
+  }, [preview, slateId, showId, showName, from, to, days, every, atTime, atTimezone, includeAssigned]);
 
   const formInvalid = days.size === 0 || !from || !to || from > to;
 
@@ -186,6 +197,40 @@ export default function SlotAssigner({
               </div>
               <span className="text-xs opacity-60 mt-1 block">
                 Confirmed / recorded / published / cancelled slots are never touched.
+              </span>
+            </label>
+          </div>
+
+          {/* Time-of-day filter — optional. Empty `atTime` = match any time
+              on the chosen days, which is the previous behavior. Useful
+              when a slate generates multiple slot times per day (7pm AND
+              9pm Tuesdays) and you only want one of them for this show. */}
+          <div className="grid md:grid-cols-[1fr_2fr] gap-3 pt-2 border-t border-base-300/50">
+            <label className="form-control block">
+              <span className="label-text text-sm">At time (optional)</span>
+              <input type="time" value={atTime}
+                     onChange={(e) => { setAtTime(e.target.value); setPreview(null); setApplied(null); }}
+                     className="input input-bordered w-full font-mono" />
+              <span className="text-xs opacity-60 mt-1 block">
+                Leave blank to match all times on the chosen days.
+              </span>
+            </label>
+            <label className={`form-control block ${atTime ? '' : 'opacity-50'}`}>
+              <span className="label-text text-sm">Timezone for that time</span>
+              <select value={atTimezone}
+                      disabled={!atTime}
+                      onChange={(e) => { setAtTimezone(e.target.value); setPreview(null); setApplied(null); }}
+                      className="select select-bordered w-full font-mono">
+                {!TIMEZONES.includes(atTimezone as any) && (
+                  <option value={atTimezone}>{atTimezone}</option>
+                )}
+                {TIMEZONES.map(tz => (
+                  <option key={tz} value={tz}>{tz}</option>
+                ))}
+              </select>
+              <span className="text-xs opacity-60 mt-1 block">
+                Defaults to the slate's timezone ({slateTimezone}).
+                Use a different zone when the show records on a different region's clock.
               </span>
             </label>
           </div>

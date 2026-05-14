@@ -7,9 +7,9 @@ import { Enqueue } from '@/lib/activity';
 export const prerender = false;
 
 // Bulk-assign open slots to a show by recurrence pattern. Lets a slate
-// admin (or the show's host) claim, e.g., "every other Tuesday from
-// now through August" for a show in one operation — instead of
-// clicking through individual slot pages.
+// admin (or the show's host) claim, e.g., "every other Tuesday at 7pm
+// Central from now through August" for a show in one operation —
+// instead of clicking through individual slot pages.
 //
 // Body:
 //   from_date         "YYYY-MM-DD" inclusive, in the slate's timezone
@@ -18,6 +18,12 @@ export const prerender = false;
 //                     (lowercase 3-letter; "sun" through "sat")
 //   every_n_weeks     1 = every week, 2 = bi-weekly, etc.
 //                     (an integer; alignment is anchored on from_date's week)
+//   at_time           optional "HH:MM" 24-hour. When present, restricts
+//                     matches to slots whose local time equals this
+//                     value when projected into at_timezone (or the
+//                     slate's timezone, when at_timezone is omitted).
+//   at_timezone       optional IANA timezone. Pairs with at_time.
+//                     Defaults to the slate's timezone.
 //   include_assigned  optional bool; default false. When true also picks
 //                     up slots in status='assigned' (claimed by a host
 //                     but no topic yet). Always skips confirmed /
@@ -36,6 +42,8 @@ interface Body {
   to_date?: string;
   days_of_week?: string[];
   every_n_weeks?: number;
+  at_time?: string;
+  at_timezone?: string;
   include_assigned?: boolean;
   dry_run?: boolean;
 }
@@ -66,10 +74,27 @@ function ymdInTz(epochSec: number, timezone: string): string {
   return fmt.format(new Date(epochSec * 1000));
 }
 
+// Return the local "HH:MM" of an epoch when projected into a timezone.
+function hhmmInTz(epochSec: number, timezone: string): string {
+  const fmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  // Intl on Node returns "HH:mm"; one quirk: midnight can be "24:00",
+  // which we normalize so equality compares match the input format.
+  return fmt.format(new Date(epochSec * 1000)).replace(/^24:/, '00:');
+}
+
 function daysBetween(aYmd: string, bYmd: string): number {
   // Both are ISO "YYYY-MM-DD" already projected into the slate's tz, so
   // ms diff at midnight UTC is fine for whole-day arithmetic.
   return Math.round((Date.parse(bYmd) - Date.parse(aYmd)) / 86_400_000);
+}
+
+// Validate that a string is a recognizable IANA timezone. We try the
+// constructor — invalid zones throw RangeError.
+function isValidTimezone(tz: string): boolean {
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; }
+  catch { return false; }
 }
 
 export const POST: APIRoute = async (ctx) => {
@@ -121,17 +146,30 @@ export const POST: APIRoute = async (ctx) => {
     const every = Number.isInteger(body.every_n_weeks) ? body.every_n_weeks! : 1;
     if (every < 1 || every > 12) throw new HttpError(400, 'invalid_every_n_weeks');
 
+    // Optional time-of-day filter. Defaults: no time filter (match any
+    // time on the chosen days), slate timezone for projection.
+    let targetTime: string | null = null;
+    let timeTz = slate.timezone;
+    if (body.at_time !== undefined && body.at_time !== null && body.at_time !== '') {
+      if (typeof body.at_time !== 'string' || !/^\d{2}:\d{2}$/.test(body.at_time)) {
+        throw new HttpError(400, 'invalid_at_time');
+      }
+      targetTime = body.at_time;
+      if (body.at_timezone && typeof body.at_timezone === 'string') {
+        if (!isValidTimezone(body.at_timezone)) {
+          throw new HttpError(400, 'invalid_at_timezone');
+        }
+        timeTz = body.at_timezone;
+      }
+    }
+
     const includeAssigned = body.include_assigned === true;
     const dryRun = body.dry_run === true;
 
-    // Pull a generous range of candidates — all this slate's non-cancelled
-    // slots in [from-1day, to+1day] (1-day buffer for timezone-edge slots).
-    // We'll filter in JS for day-of-week and every-N alignment.
+    // Pull candidates in [from-1day, to+1day] (1-day buffer for tz edges).
     const fromSec = Math.floor(Date.parse(fromYmd) / 1000) - 86400;
     const toSec   = Math.floor(Date.parse(toYmd)   / 1000) + 2 * 86400;
-    const eligibleStatuses = includeAssigned
-      ? ['open', 'assigned']
-      : ['open'];
+    const eligibleStatuses = includeAssigned ? ['open', 'assigned'] : ['open'];
 
     const candidates = await db.prepare(
       `SELECT id, start_time, status, show_id FROM slots
@@ -144,8 +182,8 @@ export const POST: APIRoute = async (ctx) => {
     }>();
 
     // Filter: in [from, to] in slate timezone, day-of-week match, every-N
-    // alignment (whole weeks since from_date), and not already assigned to
-    // a different show.
+    // alignment, time-of-day match (when supplied), and not already owned
+    // by a different show.
     const matched: Array<{
       id: string; start_time: number; status: string;
       already_this_show: boolean;
@@ -160,6 +198,10 @@ export const POST: APIRoute = async (ctx) => {
         const offset = daysBetween(fromYmd, ymd);
         const wks = Math.floor(offset / 7);
         if (wks % every !== 0) continue;
+      }
+      if (targetTime) {
+        const hhmm = hhmmInTz(s.start_time, timeTz);
+        if (hhmm !== targetTime) continue;
       }
       if (s.show_id && s.show_id !== showId) {
         // Already owned by another show — never overwrite silently.
@@ -182,13 +224,17 @@ export const POST: APIRoute = async (ctx) => {
     }
 
     // Apply: UPDATE show_id for the matched slots that aren't already
-    // pointing at this show.
+    // pointing at this show. Chunked to stay well under D1's per-statement
+    // parameter limit (~100). 50 IDs per batch + the show_id binding = 51
+    // parameters; safe by a healthy margin.
     const toAssign = matched.filter(m => !m.already_this_show);
-    if (toAssign.length > 0) {
-      const placeholders = toAssign.map(() => '?').join(',');
+    const CHUNK = 50;
+    for (let i = 0; i < toAssign.length; i += CHUNK) {
+      const batch = toAssign.slice(i, i + CHUNK);
+      const placeholders = batch.map(() => '?').join(',');
       await db.prepare(
         `UPDATE slots SET show_id = ? WHERE id IN (${placeholders})`,
-      ).bind(showId, ...toAssign.map(m => m.id)).run();
+      ).bind(showId, ...batch.map(m => m.id)).run();
     }
 
     if (toAssign.length > 0) {
@@ -204,5 +250,12 @@ export const POST: APIRoute = async (ctx) => {
       matched_count: matched.length,
       already_count: matched.length - toAssign.length,
     });
-  } catch (err) { return jsonError(err); }
+  } catch (err) {
+    // Surface the actual error to the worker logs so wrangler tail
+    // shows the cause when the API returns 500.
+    if (!(err instanceof HttpError)) {
+      console.error('[assign-slots] unhandled', err);
+    }
+    return jsonError(err);
+  }
 };
