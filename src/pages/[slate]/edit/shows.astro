@@ -91,7 +91,10 @@ const hostsForCreate = isSlateAdmin ? await db.prepare(
                   <span class="opacity-50"> · {s.episode_count} ep · {s.slot_count} slot{s.slot_count === 1 ? '' : 's'}</span>
                 </p>
               </div>
-              <a href={`/${slug}/shows/${s.slug}/edit`} class="btn btn-xs btn-ghost border border-base-300">Edit</a>
+              <div class="flex gap-1">
+                <a href={`/${slug}/shows/${s.slug}/slots`} class="btn btn-xs btn-ghost border border-base-300" title="Bulk-assign slots to this show">Slots</a>
+                <a href={`/${slug}/shows/${s.slug}/edit`} class="btn btn-xs btn-ghost border border-base-300">Edit</a>
+              </div>
             </div>
           </div>
         );

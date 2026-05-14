@@ -38,9 +38,10 @@ export type ActivityKind =
   | 'slot_scheduled'
   | 'slot_unscheduled'
   | 'notes_published'
-  | 'show_created'        // a new show was added to the slate
-  | 'show_renamed'        // show's name was changed
-  | 'show_wiki_edited'    // show's wiki body saved
+  | 'show_created'         // a new show was added to the slate
+  | 'show_renamed'         // show's name was changed
+  | 'show_wiki_edited'     // show's wiki body saved
+  | 'show_slots_assigned'  // bulk assignment of slots to a show
   | 'slate_renamed';
 
 export interface LogArgs {
@@ -311,6 +312,20 @@ export const Enqueue = {
     });
   },
 
+  // Bulk slot assignment to a show. count carries how many slots
+  // actually changed hands (i.e., were not already pointing at this
+  // show). The slate admin is the typical actor.
+  showSlotsAssigned(ctx: APIContext, args: BaseArgs & {
+    showId: string; showName: string; count: number;
+  }) {
+    return logActivity(ctx, {
+      kind: 'show_slots_assigned',
+      slateId: args.slateId,
+      actorId: args.actorId,
+      meta: { show_id: args.showId, show_name: args.showName, count: args.count },
+    });
+  },
+
   slateRenamed(ctx: APIContext, args: BaseArgs & { from: string; to: string }) {
     return logActivity(ctx, {
       kind: 'slate_renamed',
@@ -527,6 +542,14 @@ const RENDERERS: Record<ActivityKind, (r: ActivityRow, ctx: RenderContext) => To
     name(actorName(r)),
     txt(' edited a show wiki'),
     ...(r.meta?.change_summary ? [txt(` — ${r.meta.change_summary}`)] : []),
+  ],
+
+  show_slots_assigned: (r) => [
+    name(actorName(r)),
+    txt(' assigned '),
+    txt(`${r.meta?.count ?? '?'} slot${r.meta?.count === 1 ? '' : 's'}`),
+    txt(' to '),
+    name(String(r.meta?.show_name ?? 'a show')),
   ],
 };
 

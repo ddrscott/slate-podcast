@@ -1,0 +1,98 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import SlotAssigner from '@/components/SlotAssigner';
+import { getDb, getEnv } from '@/lib/db';
+import { isAppAdmin, signInUrl } from '@/lib/auth';
+
+export const prerender = false;
+
+// Bulk-assign open slots to a show by recurrence pattern.
+// Auth: show host, slate admin, or App Admin.
+
+const slug = Astro.params.slate;
+const showSlug = Astro.params.slug;
+if (!slug || !showSlug) return new Response('Not found', { status: 404 });
+
+const db = getDb(Astro);
+const slate = await db.prepare(
+  'SELECT id, slug, name, timezone, is_public FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; slug: string; name: string; timezone: string; is_public: number }>();
+if (!slate) return new Response('Not found', { status: 404 });
+if (!slate.is_public) return new Response('Private slate', { status: 403 });
+
+const show = await db.prepare(
+  'SELECT id, slug, name, host_id, cover_image_url FROM shows WHERE slate_id = ? AND slug = ?',
+).bind(slate.id, showSlug).first<{ id: string; slug: string; name: string; host_id: string | null; cover_image_url: string | null }>();
+if (!show) return new Response('Show not found', { status: 404 });
+
+const user = Astro.locals.user;
+const env = getEnv(Astro);
+const reqUrl = new URL(Astro.request.url);
+if (!user) {
+  return Astro.redirect(signInUrl(env, reqUrl.origin, `/${slate.slug}/shows/${show.slug}/slots`));
+}
+
+const isAdmin = isAppAdmin(user.scopes);
+const member = await db.prepare(
+  `SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string; is_admin: number }>();
+const isSlateAdmin = !!member?.is_admin || isAdmin;
+const isShowHost = user.id === show.host_id;
+if (!isShowHost && !isSlateAdmin) {
+  return Astro.redirect(`/${slate.slug}/shows/${show.slug}`);
+}
+
+const isMember = !!member;
+const isHost = (member?.role === 'host' || !!member?.is_admin) || isAdmin;
+
+// Default form values:
+//   from = today (in slate tz)
+//   to   = today + 6 months
+//   days = empty (user picks)
+//   every = 1
+const todayInTz = new Intl.DateTimeFormat('en-CA', {
+  timeZone: slate.timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
+const sixMonthsOut = new Date();
+sixMonthsOut.setMonth(sixMonthsOut.getMonth() + 6);
+const toDefault = new Intl.DateTimeFormat('en-CA', {
+  timeZone: slate.timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(sixMonthsOut);
+---
+
+<Layout
+  title={`Assign slots · ${show.name}`}
+  slate={{ name: slate.name, slug: slate.slug }}
+  slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
+>
+  <article class="py-6 md:py-8 max-w-3xl">
+    <p class="text-xs font-mono opacity-60 mb-4">
+      <a href={`/${slate.slug}/shows/${show.slug}`} class="link link-hover">← {show.name}</a>
+    </p>
+
+    <div class="flex items-start gap-4 flex-wrap mb-6">
+      {show.cover_image_url && (
+        <img src={show.cover_image_url} alt="" class="w-16 h-16 rounded object-cover border border-base-300 shrink-0" />
+      )}
+      <div class="flex-1 min-w-0">
+        <h1 class="text-2xl md:text-3xl font-bold">Assign slots</h1>
+        <p class="text-sm opacity-70 mt-1">
+          Claim a recurring time block for <span class="font-semibold">{show.name}</span> in one operation —
+          e.g. <em>every Tuesday at 7pm</em> or <em>every other Saturday</em>.
+        </p>
+      </div>
+    </div>
+
+    <SlotAssigner
+      client:load
+      slateId={slate.id}
+      slateSlug={slate.slug}
+      slateTimezone={slate.timezone}
+      showId={show.id}
+      showName={show.name}
+      showSlug={show.slug}
+      defaultFrom={todayInTz}
+      defaultTo={toDefault}
+    />
+  </article>
+</Layout>
