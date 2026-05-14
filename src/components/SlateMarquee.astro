@@ -156,8 +156,8 @@ if (isMember || isHost) {
                 on mobile. */}
             <div class="grid grid-cols-[112px_minmax(0,1fr)] sm:grid-cols-[160px_minmax(0,1fr)] md:grid-cols-[minmax(0,2fr)_3fr] gap-0">
               {tileArt ? (
-                <div class="aspect-square overflow-hidden bg-base-200 border-r border-base-300">
-                  <img src={tileArt} alt="" class="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-700" />
+                <div class="aspect-square overflow-hidden bg-black border-r border-base-300">
+                  <img src={tileArt} alt="" class="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-700" />
                 </div>
               ) : (
                 <div class="bg-gradient-to-br from-signal/15 to-base-200 border-r border-base-300"></div>
@@ -221,8 +221,8 @@ if (isMember || isHost) {
                    class="block rounded border border-base-300 hover:border-signal transition-colors h-full overflow-hidden">
                   <div class="grid grid-cols-[88px_minmax(0,1fr)] sm:grid-cols-1 gap-0">
                     {tileArt ? (
-                      <div class="aspect-square overflow-hidden border-r sm:border-r-0 sm:border-b border-base-300 bg-base-200">
-                        <img src={tileArt} alt="" class="w-full h-full object-cover" />
+                      <div class="aspect-square overflow-hidden border-r sm:border-r-0 sm:border-b border-base-300 bg-black">
+                        <img src={tileArt} alt="" class="w-full h-full object-contain" />
                       </div>
                     ) : (
                       <div class="aspect-square bg-gradient-to-br from-signal/10 to-base-200 border-r sm:border-r-0 sm:border-b border-base-300"></div>
@@ -281,8 +281,9 @@ if (isMember || isHost) {
                class="group flex gap-5 p-5 rounded-lg border border-base-300 hover:border-signal transition-colors h-full">
               <div class="shrink-0">
                 {s.cover_image_url ? (
-                  <img src={s.cover_image_url} alt=""
-                       class="w-20 h-20 md:w-24 md:h-24 rounded object-cover border border-base-300" />
+                  <div class="w-20 h-20 md:w-24 md:h-24 rounded overflow-hidden bg-black border border-base-300">
+                    <img src={s.cover_image_url} alt="" class="w-full h-full object-contain" />
+                  </div>
                 ) : (
                   <div class="w-20 h-20 md:w-24 md:h-24 rounded bg-gradient-to-br from-signal/15 to-base-200 border border-base-300 flex items-center justify-center text-3xl font-mono opacity-60">
                     {s.name.charAt(0).toUpperCase()}

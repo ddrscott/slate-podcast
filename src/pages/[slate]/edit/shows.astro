@@ -78,7 +78,7 @@ const hostsForCreate = isSlateAdmin ? await db.prepare(
             <div class="card-body py-3 flex-row items-center gap-4">
               <div class="shrink-0">
                 {s.cover_image_url
-                  ? <img src={s.cover_image_url} alt="" class="w-14 h-14 rounded object-cover border border-base-300" />
+                  ? <div class="w-14 h-14 rounded overflow-hidden bg-black border border-base-300"><img src={s.cover_image_url} alt="" class="w-full h-full object-contain" /></div>
                   : <div class="w-14 h-14 rounded bg-gradient-to-br from-signal/15 to-base-200 border border-base-300 flex items-center justify-center text-xl font-mono opacity-60">{s.name.charAt(0).toUpperCase()}</div>}
               </div>
               <div class="flex-1 min-w-0">

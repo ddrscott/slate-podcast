@@ -69,9 +69,9 @@ const callerIsSlateHost = member?.role === 'host';
         </p>
 
         <div class="flex items-start gap-4 flex-wrap">
-          <div id="show-logo-preview" class="w-32 aspect-square rounded border border-base-300 bg-base-200 overflow-hidden flex items-center justify-center text-xs opacity-60">
+          <div id="show-logo-preview" class={`w-32 aspect-square rounded border border-base-300 ${member!.show_logo_url ? 'bg-black' : 'bg-base-200'} overflow-hidden flex items-center justify-center text-xs opacity-60`}>
             {member!.show_logo_url
-              ? <img src={member!.show_logo_url} alt="" class="w-full h-full object-cover" />
+              ? <img src={member!.show_logo_url} alt="" class="w-full h-full object-contain" />
               : <span class="font-mono">no logo</span>}
           </div>
           <div class="flex flex-col gap-2 flex-1 min-w-[16rem]">
@@ -105,9 +105,9 @@ const callerIsSlateHost = member?.role === 'host';
         Square (1:1), like an Apple Podcasts cover. Recommended ≥800×800. We auto-extract an accent color from the artwork.
       </p>
       <div class="flex items-start gap-4 flex-wrap">
-        <div id="artwork-preview" class="w-40 aspect-square rounded border border-base-300 bg-base-200 overflow-hidden flex items-center justify-center text-xs opacity-60">
+        <div id="artwork-preview" class={`w-40 aspect-square rounded border border-base-300 ${slate.artwork_image_url ? 'bg-black' : 'bg-base-200'} overflow-hidden flex items-center justify-center text-xs opacity-60`}>
           {slate.artwork_image_url
-            ? <img src={slate.artwork_image_url} alt="" class="w-full h-full object-cover" />
+            ? <img src={slate.artwork_image_url} alt="" class="w-full h-full object-contain" />
             : <span class="font-mono">no artwork</span>}
         </div>
         <div class="flex flex-col gap-2">
@@ -257,7 +257,8 @@ const callerIsSlateHost = member?.role === 'host';
         const res = await fetch(`/api/slates/${slateId}/artwork`, { method: 'POST', body: fd });
         if (res.ok) {
           const body = await res.json();
-          preview.innerHTML = `<img src="${body.artwork_image_url}" alt="" class="w-full h-full object-cover" />`;
+          preview.innerHTML = `<img src="${body.artwork_image_url}" alt="" class="w-full h-full object-contain" />`;
+          preview.classList.remove('bg-base-200'); preview.classList.add('bg-black');
           if (body.marquee_accent) {
             swatch.style.backgroundColor = body.marquee_accent;
             swatch.title = body.marquee_accent;
@@ -360,7 +361,8 @@ const callerIsSlateHost = member?.role === 'host';
         const res = await fetch(`/api/slates/${slateId}/hosts/${userId}/show-logo`, { method: 'POST', body: fd });
         if (res.ok) {
           const body = await res.json();
-          preview.innerHTML = `<img src="${body.show_logo_url}" alt="" class="w-full h-full object-cover" />`;
+          preview.innerHTML = `<img src="${body.show_logo_url}" alt="" class="w-full h-full object-contain" />`;
+          preview.classList.remove('bg-base-200'); preview.classList.add('bg-black');
           setStatus('Saved.', 'success');
           setTimeout(() => location.reload(), 600);
         } else {

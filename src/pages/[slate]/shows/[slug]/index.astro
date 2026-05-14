@@ -128,8 +128,9 @@ const fmtRevision = new Intl.DateTimeFormat('en-US', {
     <header class="flex flex-wrap items-start gap-5 md:gap-6">
       <div class="shrink-0">
         {show.cover_image_url ? (
-          <img src={show.cover_image_url} alt=""
-               class="w-32 h-32 md:w-44 md:h-44 rounded object-cover border border-base-300 shadow-md" />
+          <div class="w-32 h-32 md:w-44 md:h-44 rounded overflow-hidden bg-black border border-base-300 shadow-md">
+            <img src={show.cover_image_url} alt="" class="w-full h-full object-contain" />
+          </div>
         ) : (
           <div class="w-32 h-32 md:w-44 md:h-44 rounded bg-gradient-to-br from-signal/20 to-base-200 border border-base-300 flex items-center justify-center text-5xl font-mono opacity-60">
             {show.name.charAt(0).toUpperCase()}

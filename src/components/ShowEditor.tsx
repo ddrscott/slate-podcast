@@ -122,9 +122,9 @@ export default function ShowEditor({
       <section className="space-y-6">
         <div className="flex items-start gap-5 flex-wrap">
           <div className="shrink-0">
-            <div className="w-32 h-32 md:w-40 md:h-40 rounded border border-base-300 overflow-hidden bg-base-200 flex items-center justify-center text-xs opacity-60">
+            <div className={`w-32 h-32 md:w-40 md:h-40 rounded border border-base-300 overflow-hidden ${coverUrl ? 'bg-black' : 'bg-base-200'} flex items-center justify-center text-xs opacity-60`}>
               {coverUrl
-                ? <img src={coverUrl} alt="" className="w-full h-full object-cover" />
+                ? <img src={coverUrl} alt="" className="w-full h-full object-contain" />
                 : <span className="font-mono">no cover</span>}
             </div>
             <div className="flex flex-wrap gap-2 mt-2">

@@ -95,7 +95,7 @@ const availableTopics = isHost ? await db.prepare(
           <span class="opacity-50">·</span>
           <a href={`/${slug}/shows/${slot.show_slug}`} class="flex items-center gap-1.5 hover:text-signal transition-colors">
             {slot.show_cover
-              ? <img src={slot.show_cover} alt="" class="w-5 h-5 rounded object-cover" />
+              ? <span class="w-5 h-5 rounded overflow-hidden bg-black inline-flex"><img src={slot.show_cover} alt="" class="w-full h-full object-contain" /></span>
               : <span class="w-5 h-5 rounded bg-base-200 inline-flex items-center justify-center text-[10px] font-bold opacity-70">{(slot.show_name ?? '').charAt(0).toUpperCase()}</span>}
             <span class="opacity-80 font-semibold">{slot.show_name}</span>
           </a>

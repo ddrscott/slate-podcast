@@ -88,8 +88,9 @@ const computedOgDescription = ogDescription ?? (slate
         {slate ? (
           <a href={brandHref} class="flex items-center gap-3 min-w-0 no-underline" title={brandLabel}>
             {slate.artwork_image_url ? (
-              <img src={slate.artwork_image_url} alt=""
-                   class="w-9 h-9 md:w-10 md:h-10 rounded object-cover border border-base-300 shrink-0" />
+              <div class="w-9 h-9 md:w-10 md:h-10 rounded overflow-hidden bg-black border border-base-300 shrink-0">
+                <img src={slate.artwork_image_url} alt="" class="w-full h-full object-contain" />
+              </div>
             ) : (
               <div class="w-9 h-9 md:w-10 md:h-10 rounded bg-gradient-to-br from-signal/20 to-base-200 border border-base-300 flex items-center justify-center text-base font-bold font-mono shrink-0">
                 {slate.name.charAt(0).toUpperCase()}
