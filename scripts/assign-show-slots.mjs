@@ -1,35 +1,102 @@
 #!/usr/bin/env node
-// One-off: assign every-other-Friday at 6 PM Central from 2026-05-22
-// through 2030-12-31 to the show "abolitionist-story-hour" on the
-// "immediate-justice-aemxnvs" slate. CREATES SLOTS THAT DON'T EXIST.
+// Bulk-assign + create slots for a show on a recurring pattern.
+// Run by an operator who has D1 access (i.e., admin team) when a slate
+// admin wants to bootstrap a show's recurring schedule.
+//
+// Does what the bulk-assign UI does AND creates slots that don't exist
+// yet at the target wall-clocks — useful when a show's cadence doesn't
+// match the slate's existing slot_rules.
+//
+// Required args:
+//   --slate  <slug>        e.g. immediate-justice-aemxnvs
+//   --show   <slug>        e.g. abolitionist-story-hour
+//   --from   YYYY-MM-DD    inclusive (in --tz)
+//   --to     YYYY-MM-DD    inclusive
+//   --time   HH:MM         24-hour wall-clock in --tz
+//
+// Optional args:
+//   --every     N           1=weekly, 2=bi-weekly, etc. (default 1)
+//   --tz        IANA-tz     defaults to slate.timezone
+//   --duration  minutes     new-slot duration in minutes (default 60)
+//   --day       sun|mon|... force a weekday; default = whatever day --from is
+//   --apply                 commit. Without it, dry-run only.
 //
 // Strategy:
-//   1. Generate the target wall-clock list (bi-weekly Fridays at 18:00
-//      in America/Chicago between FROM and TO).
-//   2. Convert each to a UTC epoch using a DST-aware offset lookup.
-//   3. SELECT existing slots at those start_times.
-//   4. For each target:
+//   1. Resolve show + slate
+//   2. Generate target wall-clock list (stepping --every weeks from --from)
+//   3. DST-aware wall-clock → UTC epoch per target
+//   4. SELECT existing slots at those start_times (chunked for D1 param cap)
+//   5. Per target:
 //        - already this show           → skip
 //        - exists, owned by other show → skip (won't overwrite)
 //        - exists, unassigned          → UPDATE show_id (+ host_id when null)
-//        - doesn't exist               → INSERT with show_id + host_id
-//   5. Log a single show_slots_assigned activity entry covering the
-//      whole operation.
+//        - doesn't exist               → INSERT new slot, status='assigned'
+//                                        when the show has a default host,
+//                                        else 'open'
+//   6. Single show_slots_assigned activity entry per run.
 //
-//   dry-run:  node scripts/oneoff-assign-asl.mjs
-//   apply:    node scripts/oneoff-assign-asl.mjs --apply
+// Examples:
+//   node scripts/assign-show-slots.mjs \
+//     --slate immediate-justice-aemxnvs --show abolitionist-story-hour \
+//     --from 2026-05-22 --to 2030-12-31 --every 2 --time 18:00 \
+//     --tz America/Chicago --apply
+//
+//   node scripts/assign-show-slots.mjs \
+//     --slate immediate-justice-aemxnvs --show reformed-labs \
+//     --from 2026-05-15 --to 2030-12-31 --every 2 --time 20:00 \
+//     --tz America/Chicago --apply
 
 import { execSync } from 'node:child_process';
 
-const SLATE_SLUG = 'immediate-justice-aemxnvs';
-const SHOW_SLUG  = 'abolitionist-story-hour';
-const FROM_YMD   = '2026-05-22';   // Friday
-const TO_YMD     = '2030-12-31';
-const EVERY_N    = 2;              // bi-weekly
-const AT_TIME    = '18:00';
-const AT_TZ      = 'America/Chicago';
-const DEFAULT_DURATION_MIN = 60;
+// ── Arg parsing ───────────────────────────────────────────────────────
+function parseArgs(argv) {
+  const out = { _: [] };
+  for (let i = 2; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith('--')) {
+      const key = a.slice(2);
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith('--')) { out[key] = true; }
+      else { out[key] = next; i++; }
+    } else { out._.push(a); }
+  }
+  return out;
+}
+const args = parseArgs(process.argv);
 
+function req(name) {
+  const v = args[name];
+  if (!v || typeof v !== 'string') {
+    console.error(`Missing required arg --${name}`);
+    process.exit(2);
+  }
+  return v;
+}
+
+const SLATE_SLUG = req('slate');
+const SHOW_SLUG  = req('show');
+const FROM_YMD   = req('from');
+const TO_YMD     = req('to');
+const AT_TIME    = req('time');
+const EVERY_N    = Number(args.every ?? 1);
+const DURATION   = Number(args.duration ?? 60);
+const FORCED_DAY = (args.day ?? '').toString().toLowerCase() || null;
+const APPLY      = args.apply === true;
+
+if (!/^\d{4}-\d{2}-\d{2}$/.test(FROM_YMD) || !/^\d{4}-\d{2}-\d{2}$/.test(TO_YMD)) {
+  console.error('--from / --to must be YYYY-MM-DD');
+  process.exit(2);
+}
+if (!/^\d{2}:\d{2}$/.test(AT_TIME)) {
+  console.error('--time must be HH:MM (24-hour)');
+  process.exit(2);
+}
+if (!Number.isInteger(EVERY_N) || EVERY_N < 1 || EVERY_N > 12) {
+  console.error('--every must be an integer 1..12');
+  process.exit(2);
+}
+
+// ── Wrangler helpers ──────────────────────────────────────────────────
 function wranglerQuery(sql) {
   const one = sql.replace(/\s+/g, ' ').trim();
   const out = execSync(
@@ -48,9 +115,6 @@ function wranglerExec(sql) {
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────
-
-// What's the UTC offset (in minutes) of a given UTC instant when
-// projected into a target timezone? Positive = ahead of UTC. Handles DST.
 function tzOffsetMinutes(epochMs, tz) {
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
@@ -59,16 +123,11 @@ function tzOffsetMinutes(epochMs, tz) {
   const parts = fmt.formatToParts(new Date(epochMs));
   const get = (t) => Number(parts.find(p => p.type === t)?.value ?? 0);
   let h = get('hour');
-  // 'hour12: false' sometimes returns "24" for midnight on Node; normalize.
   if (h === 24) h = 0;
   const localUtc = Date.UTC(get('year'), get('month') - 1, get('day'), h, get('minute'), get('second'));
   return (localUtc - epochMs) / 60_000;
 }
 
-// Given a wall-clock (Y-M-D h:m) in a target timezone, return the UTC
-// epoch (seconds). DST-aware via iterative offset resolution; one pass
-// is enough since the offset only depends on the wall-clock day, not
-// on the eventual epoch.
 function tzWallToEpochSec(y, mo, d, h, mi, tz) {
   const guessMs = Date.UTC(y, mo - 1, d, h, mi);
   const offsetMin = tzOffsetMinutes(guessMs, tz);
@@ -85,6 +144,11 @@ function hhmmInTz(epochSec, tz) {
   return new Intl.DateTimeFormat('en-GB', {
     timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
   }).format(new Date(epochSec * 1000)).replace(/^24:/, '00:');
+}
+
+function dowInTz(epochSec, tz) {
+  return new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' })
+    .format(new Date(epochSec * 1000)).toLowerCase();
 }
 
 function randomId(n = 10) {
@@ -108,7 +172,9 @@ if (!info) {
   console.error(`ERROR: show "${SHOW_SLUG}" on slate "${SLATE_SLUG}" not found`);
   process.exit(1);
 }
-console.error(`  → show_id=${info.show_id}  name="${info.show_name}"  slate_tz=${info.slate_tz}  default_host=${info.host_id ?? '(none)'}`);
+const AT_TZ = (args.tz ?? info.slate_tz).toString();
+console.error(`  → show_id=${info.show_id}  name="${info.show_name}"`);
+console.error(`  → slate_tz=${info.slate_tz}  using tz=${AT_TZ}  default_host=${info.host_id ?? '(none)'}`);
 
 // ── Step 2: generate target wall-clocks → UTC epochs ──────────────────
 const [fromY, fromM, fromD] = FROM_YMD.split('-').map(Number);
@@ -121,15 +187,23 @@ const targets = []; // { epoch_sec, ymd }
 const stepDays = EVERY_N * 7;
 for (let dayN = fromBaseDays; dayN <= toBaseDays; dayN += stepDays) {
   const d = new Date(dayN * 86_400_000);
-  const y = d.getUTCFullYear();
-  const m = d.getUTCMonth() + 1;
-  const day = d.getUTCDate();
-  const epochSec = tzWallToEpochSec(y, m, day, tH, tMi, AT_TZ);
-  targets.push({ epoch_sec: epochSec, ymd: `${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}` });
+  const epochSec = tzWallToEpochSec(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), tH, tMi, AT_TZ);
+  // Optional weekday guard — if the operator passed --day, verify each
+  // generated date is on that weekday. Catches user typos in --from
+  // (e.g. a Monday date with --day fri).
+  if (FORCED_DAY) {
+    const dow = dowInTz(epochSec, AT_TZ);
+    if (dow !== FORCED_DAY) {
+      console.error(`ERROR: --from ${FROM_YMD} is a ${dow.toUpperCase()} in ${AT_TZ}; --day=${FORCED_DAY} mismatched`);
+      process.exit(1);
+    }
+  }
+  targets.push({ epoch_sec: epochSec, ymd: ymdInTz(epochSec, AT_TZ) });
 }
-console.error(`Generated ${targets.length} target Fridays at 18:00 ${AT_TZ}.`);
+const startDow = dowInTz(targets[0].epoch_sec, AT_TZ);
+console.error(`Generated ${targets.length} targets, every ${EVERY_N}w on ${startDow.toUpperCase()} at ${AT_TIME} ${AT_TZ}.`);
 
-// ── Step 3: look up which targets already have slots ──────────────────
+// ── Step 3: look up existing slots ────────────────────────────────────
 const startTimes = targets.map(t => t.epoch_sec);
 const CHUNK_SELECT = 90;
 const existingByStart = new Map();
@@ -144,11 +218,10 @@ for (let i = 0; i < startTimes.length; i += CHUNK_SELECT) {
   for (const r of rows) existingByStart.set(r.start_time, r);
 }
 
-let toUpdate = [];   // slot rows to UPDATE
-let toInsert = [];   // targets to INSERT
+const toUpdate = [];
+const toInsert = [];
 let alreadyMine = 0;
 let conflicts  = 0;
-
 for (const t of targets) {
   const existing = existingByStart.get(t.epoch_sec);
   if (!existing) { toInsert.push(t); continue; }
@@ -175,21 +248,18 @@ if (toInsert.length > 0) {
   console.error();
 }
 
-if (!process.argv.includes('--apply')) {
+if (!APPLY) {
   console.error('Dry run. Re-run with --apply to commit.');
   process.exit(0);
 }
 
 // ── Step 4: apply ─────────────────────────────────────────────────────
 const CHUNK_WRITE = 50;
-
-// UPDATE: assign show_id, fill host_id when null, flip 'open' → 'assigned' if host is set.
 let updated = 0;
 for (let i = 0; i < toUpdate.length; i += CHUNK_WRITE) {
   const batch = toUpdate.slice(i, i + CHUNK_WRITE);
   const ids = batch.map(s => sqlEsc(s.id)).join(',');
   if (info.host_id) {
-    // Set host_id only where it's currently NULL (preserves manual assignments).
     wranglerExec(`
       UPDATE slots
       SET show_id = ${sqlEsc(info.show_id)},
@@ -204,14 +274,13 @@ for (let i = 0; i < toUpdate.length; i += CHUNK_WRITE) {
   console.error(`  UPDATE → ${updated}/${toUpdate.length}`);
 }
 
-// INSERT: build VALUES tuples in batches.
 let inserted = 0;
 const status = info.host_id ? 'assigned' : 'open';
 for (let i = 0; i < toInsert.length; i += CHUNK_WRITE) {
   const batch = toInsert.slice(i, i + CHUNK_WRITE);
   const rows = batch.map(t => {
     const id = `slot_${randomId(10)}`;
-    return `(${sqlEsc(id)}, ${sqlEsc(info.slate_id)}, NULL, ${sqlEsc(info.show_id)}, ${t.epoch_sec}, ${DEFAULT_DURATION_MIN}, '${status}', ${sqlEsc(info.host_id)}, NULL, NULL, NULL, NULL, NULL, NULL, unixepoch())`;
+    return `(${sqlEsc(id)}, ${sqlEsc(info.slate_id)}, NULL, ${sqlEsc(info.show_id)}, ${t.epoch_sec}, ${DURATION}, '${status}', ${sqlEsc(info.host_id)}, NULL, NULL, NULL, NULL, NULL, NULL, unixepoch())`;
   }).join(',\n');
   wranglerExec(`
     INSERT OR IGNORE INTO slots
@@ -224,7 +293,6 @@ for (let i = 0; i < toInsert.length; i += CHUNK_WRITE) {
   console.error(`  INSERT → ${inserted}/${toInsert.length}`);
 }
 
-// Activity log entry for the whole operation.
 const totalAssigned = toUpdate.length + toInsert.length;
 if (totalAssigned > 0) {
   const actor = wranglerQuery(`SELECT id FROM users WHERE email = 'ddrscott@gmail.com'`)[0];

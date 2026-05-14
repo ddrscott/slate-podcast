@@ -26,6 +26,9 @@ export interface SlotRow {
   host_display_name: string | null;
   topic_id: string | null;
   topic_title: string | null;
+  show_id: string | null;
+  show_slug: string | null;
+  show_name: string | null;
 }
 
 interface Props {
@@ -64,6 +67,9 @@ export default function SlotsAGGrid({ slateId, timezone, rows: initialRows }: Pr
         'opacity-50 line-through': p => p.value === 'cancelled',
       },
     },
+    { headerName: 'Show', field: 'show_name', width: 200, editable: false,
+      valueGetter: (p) => p.data?.show_name ?? '',
+      cellStyle: { fontWeight: '600' } as Record<string, string> },
     { headerName: 'Host', width: 200, editable: false,
       valueGetter: (p) => {
         const r = p.data;
