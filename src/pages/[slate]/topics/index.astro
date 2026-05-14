@@ -2,38 +2,45 @@
 import Layout from '@/layouts/Layout.astro';
 import ScheduleTopicPanel from '@/components/ScheduleTopicPanel.astro';
 import TopicCard from '@/components/TopicCard.astro';
-import { getDb } from '@/lib/db';
-import { signInUrlForCtx, isAppAdmin } from '@/lib/auth';
+import { getDb, getEnv } from '@/lib/db';
+import { signInUrl, isAppAdmin } from '@/lib/auth';
 
 export const prerender = false;
+
+// Topic archive — public read for anyone with the link to a public slate;
+// member/host gates only apply to interactive bits (vote, suggest, claim).
+// Replaces the previous all-members-only design so the "See all →" link
+// on the marquee works for anonymous listeners exploring the slate.
 
 const slug = Astro.params.slate;
 if (!slug) return new Response('Not found', { status: 404 });
 
 const db = getDb(Astro);
-const slate = await db.prepare('SELECT id, name, is_public, timezone FROM slates WHERE slug = ?').bind(slug)
-  .first<{ id: string; name: string; is_public: number; timezone: string }>();
+const slate = await db.prepare(
+  'SELECT id, name, is_public, timezone FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; name: string; is_public: number; timezone: string }>();
 if (!slate) return new Response('Not found', { status: 404 });
+if (!slate.is_public) return new Response('Private slate', { status: 403 });
 
 const user = Astro.locals.user;
-if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/topics`));
+const env = getEnv(Astro);
+const reqUrl = new URL(Astro.request.url);
+const signInHref = signInUrl(env, reqUrl.origin, `/${slug}/topics`);
 
-const isAdmin = isAppAdmin(user.scopes);
-const member = await db.prepare(
+const isAdmin = isAppAdmin(user?.scopes);
+const member = user ? await db.prepare(
   'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
-).bind(slate.id, user.id).first<{ role: string }>();
-if (!isAdmin && !member) return Astro.redirect(`/${slug}/join`);
+).bind(slate.id, user.id).first<{ role: string }>() : null;
+const isMember = !!member;
 const isHost = isAdmin || member?.role === 'host';
 
-const url = new URL(Astro.request.url);
-const status = url.searchParams.get('status') ?? 'open';
+const status = reqUrl.searchParams.get('status') ?? 'open';
 
 const where = status === 'all' ? 's.slate_id = ?' : 's.slate_id = ? AND s.status = ?';
 const params: unknown[] = status === 'all' ? [slate.id] : [slate.id, status];
 
-// When the user is viewing 'all', surface open items above scheduled/archived
-// — hosts scanning for things to claim should see actionable items first.
-// Within each status group, sort by upvote count then recency.
+// `has_voted` requires a user id for the subquery; pass empty string when
+// anonymous so the subquery returns nothing rather than NULL-comparing.
 const topics = await db.prepare(
   `SELECT s.id, s.title, s.description, s.url, s.tags, s.status, s.upvote_count,
           s.submitted_at, s.scheduled_slot_id,
@@ -49,7 +56,7 @@ const topics = await db.prepare(
    LEFT JOIN users spk ON spk.id = sl.host_id
    WHERE ${where}
    ORDER BY (s.status = 'open') DESC, s.upvote_count DESC, s.submitted_at DESC`,
-).bind(user.id, ...params).all<any>();
+).bind(user?.id ?? '', ...params).all<any>();
 
 const fmtSched = new Intl.DateTimeFormat('en-US', {
   timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
@@ -57,14 +64,24 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
 });
 ---
 
-<Layout title={`Topics · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
+<Layout
+  title={`Topics · ${slate.name}`}
+  slate={{ name: slate.name, slug: slug! }}
+  slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
+>
   <section class="py-8 max-w-3xl">
-    <div class="flex items-baseline justify-between mb-4">
+    <div class="flex items-baseline justify-between mb-4 gap-4 flex-wrap">
       <div>
         <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
         <h1 class="text-2xl font-bold">Topic pool</h1>
       </div>
-      <a href={`/${slug}/topics/new`} class="btn btn-primary btn-sm">+ Suggest</a>
+      {isMember || isAdmin ? (
+        <a href={`/${slug}/topics/new`} class="btn btn-primary btn-sm">+ Suggest</a>
+      ) : user ? (
+        <a href={`/${slug}/join`} class="btn btn-primary btn-sm">Join to suggest</a>
+      ) : (
+        <a href={signInHref} class="btn btn-primary btn-sm">Sign in to suggest</a>
+      )}
     </div>
 
     <div class="flex gap-2 mb-6 text-sm">
@@ -78,9 +95,9 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
       {topics.results.map((s: any) => (
         <TopicCard
           s={s}
-          isMember={true}
+          isMember={isMember}
           isHost={isHost}
-          currentUserId={user.id}
+          currentUserId={user?.id}
           isAdmin={isAdmin}
           fmtSched={fmtSched}
           showAuthor
@@ -94,9 +111,13 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
 
   {isHost && <ScheduleTopicPanel slate={{ id: slate.id, slug: slug!, name: slate.name }} />}
 
-  <script is:inline>
+  <script is:inline define:vars={{ isMember, signInHref }}>
+    // Vote — members + hosts only. Anonymous click → sign-in bounce.
     document.querySelectorAll('.upvote').forEach(b => {
-      b.addEventListener('click', async () => {
+      b.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isMember) { window.location.href = signInHref; return; }
         b.disabled = true;
         const res = await fetch(`/api/topics/${b.dataset.id}/vote`, { method: 'POST' });
         if (res.ok) {
@@ -120,6 +141,9 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
       });
     });
 
+    // Schedule / unschedule — host-only buttons. Anonymous viewers don't
+    // see them (TopicCard only renders the controls when isHost), so
+    // these handlers are no-ops for them.
     document.querySelectorAll('.schedule-trigger').forEach(b => {
       b.addEventListener('click', () => {
         window.dispatchEvent(new CustomEvent('schedule-topic', {
