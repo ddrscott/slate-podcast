@@ -65,6 +65,10 @@ CREATE INDEX IF NOT EXISTS idx_slates_slug ON slates(slug);
 -- slate — distinct from their personal display_name + headshot. Both
 -- nullable; the marquee falls back to the personal profile + slate
 -- artwork when they're absent.
+-- `profile_body` is the host's long-form wiki page on this slate
+-- (markdown). Listeners read it at /[slate]/hosts/[user_id]; hosts edit
+-- their own, App Admins edit anyone's. Every save also writes a
+-- slate_member_revisions row; last-write-wins on the denormalized body.
 CREATE TABLE IF NOT EXISTS slate_members (
   slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -74,10 +78,24 @@ CREATE TABLE IF NOT EXISTS slate_members (
   promoted_by TEXT REFERENCES users(id),
   show_name TEXT,
   show_logo_url TEXT,
+  profile_body TEXT,
   PRIMARY KEY (slate_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_slate_members_user ON slate_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_slate_members_slate_role ON slate_members(slate_id, role);
+
+-- Append-only history of host wiki saves. Same shape as topic_revisions.
+CREATE TABLE IF NOT EXISTS slate_member_revisions (
+  id              TEXT PRIMARY KEY,
+  slate_id        TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
+  user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body            TEXT NOT NULL,
+  author_id       TEXT REFERENCES users(id) ON DELETE SET NULL,
+  change_summary  TEXT,
+  created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_slate_member_revisions_target
+  ON slate_member_revisions(slate_id, user_id, created_at DESC);
 
 -- ─── Recurrence rules ──────────────────────────────────────────────────────
 -- Hosts (or App Admins) configure these per slate. Slot generation

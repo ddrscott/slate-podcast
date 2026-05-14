@@ -32,6 +32,7 @@ const topic = await db.prepare(
           t.submitted_at, t.scheduled_slot_id,
           a.email AS author_email, a.display_name AS author_display_name,
           sl.start_time AS scheduled_start,
+          sl.host_id    AS scheduled_host_id,
           spk.email AS scheduled_host_email,
           spk.display_name AS scheduled_host_display_name
    FROM topics t
@@ -45,6 +46,7 @@ const topic = await db.prepare(
   submitted_at: number; scheduled_slot_id: string | null;
   author_email: string; author_display_name: string | null;
   scheduled_start: number | null;
+  scheduled_host_id: string | null;
   scheduled_host_email: string | null;
   scheduled_host_display_name: string | null;
 }>();
@@ -118,7 +120,12 @@ const scheduledHostName = topic.scheduled_host_email
       {topic.scheduled_start && (
         <span class="opacity-80">
           → {fmtScheduled.format(new Date(topic.scheduled_start * 1000))}
-          {scheduledHostName && <> · with <span class="font-semibold">{scheduledHostName}</span></>}
+          {scheduledHostName && topic.scheduled_host_id && (
+            <> · with <a href={`/${slate.slug}/hosts/${topic.scheduled_host_id}`} class="font-semibold hover:text-signal">{scheduledHostName}</a></>
+          )}
+          {scheduledHostName && !topic.scheduled_host_id && (
+            <> · with <span class="font-semibold">{scheduledHostName}</span></>
+          )}
         </span>
       )}
     </div>

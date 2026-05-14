@@ -93,7 +93,7 @@ const availableTopics = isHost ? await db.prepare(
       {slot.host_id && (
         <>
           <span class="opacity-50">·</span>
-          <span class="flex items-center gap-1.5">
+          <a href={`/${slug}/hosts/${slot.host_id}`} class="flex items-center gap-1.5 hover:text-signal transition-colors">
             {slot.host_show_logo_url
               ? <img src={slot.host_show_logo_url} alt="" class="w-5 h-5 rounded object-cover" />
               : slot.host_headshot_url
@@ -103,7 +103,7 @@ const availableTopics = isHost ? await db.prepare(
               {slot.host_show_name ?? hostName}
               {slot.host_show_name && hostName && <span class="opacity-60"> · {hostName}</span>}
             </span>
-          </span>
+          </a>
         </>
       )}
     </p>

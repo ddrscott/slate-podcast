@@ -1,0 +1,88 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import HostProfileEditor from '@/components/HostProfileEditor';
+import { getDb, getEnv } from '@/lib/db';
+import { isAppAdmin, signInUrl } from '@/lib/auth';
+import { displayName } from '@/lib/people';
+
+export const prerender = false;
+
+// Edit a host's wiki page. Member-gated to the host themselves OR an
+// App Admin. Visitor → sign-in bounce; signed-in non-owner → redirect
+// to the public host page.
+
+const slug = Astro.params.slate;
+const hostUserId = Astro.params.id;
+if (!slug || !hostUserId) return new Response('Not found', { status: 404 });
+
+const db = getDb(Astro);
+
+const slate = await db.prepare(
+  'SELECT id, slug, name, is_public FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; slug: string; name: string; is_public: number }>();
+if (!slate) return new Response('Not found', { status: 404 });
+if (!slate.is_public) return new Response('Private slate', { status: 403 });
+
+const user = Astro.locals.user;
+const env = getEnv(Astro);
+const reqUrl = new URL(Astro.request.url);
+if (!user) {
+  return Astro.redirect(signInUrl(env, reqUrl.origin, `/${slate.slug}/hosts/${hostUserId}/edit`));
+}
+
+const host = await db.prepare(
+  `SELECT u.id, u.email, u.display_name,
+          sm.show_name, sm.profile_body
+   FROM slate_members sm
+   JOIN users u ON u.id = sm.user_id
+   WHERE sm.slate_id = ? AND sm.user_id = ? AND sm.role = 'host'`,
+).bind(slate.id, hostUserId).first<{
+  id: string; email: string; display_name: string | null;
+  show_name: string | null; profile_body: string | null;
+}>();
+if (!host) return new Response('Host not found', { status: 404 });
+
+const isOwner = user.id === host.id;
+const isAdmin = isAppAdmin(user.scopes);
+if (!isOwner && !isAdmin) {
+  // Signed in but not allowed to edit this host — back to the public page.
+  return Astro.redirect(`/${slate.slug}/hosts/${host.id}`);
+}
+
+const member = await db.prepare(
+  `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string }>();
+const isMember = !!member;
+const isHost = member?.role === 'host' || isAdmin;
+
+const personName = displayName({ display_name: host.display_name, email: host.email });
+const pageTitle = host.show_name ?? personName;
+---
+
+<Layout
+  title={`Edit page · ${pageTitle}`}
+  slate={{ name: slate.name, slug: slate.slug }}
+  slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
+>
+  <article class="py-6 md:py-8 max-w-4xl">
+    <p class="text-xs font-mono opacity-60 mb-4">
+      <a href={`/${slate.slug}/hosts/${host.id}`} class="link link-hover">← {pageTitle}</a>
+    </p>
+
+    <h1 class="text-2xl md:text-3xl font-bold mb-2">Editing your page</h1>
+    <p class="text-sm opacity-70 mb-6">
+      <span class="font-mono">// {pageTitle}</span>
+      <br />
+      Markdown. Links, images, embedded videos, donation buttons, lists — anything.
+      Every save creates a revision with your name on it.
+    </p>
+
+    <HostProfileEditor
+      client:load
+      slateId={slate.id}
+      slateSlug={slate.slug}
+      hostUserId={host.id}
+      initialBody={host.profile_body}
+    />
+  </article>
+</Layout>

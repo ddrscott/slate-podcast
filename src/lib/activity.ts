@@ -27,11 +27,12 @@ export type ActivityKind =
   | 'member_joined'
   | 'host_promoted'
   | 'host_demoted'
-  | 'host_substituted'   // one Host took over a slot from another
+  | 'host_substituted'    // one Host took over a slot from another
+  | 'host_profile_edited' // host saved an edit to their wiki page
   | 'topic_posted'
   | 'topic_archived'
-  | 'topic_notes_edited' // member/host saved an edit to a topic's notes
-  | 'slot_claimed'       // host took a slot without a topic
+  | 'topic_notes_edited'  // member/host saved an edit to a topic's notes
+  | 'slot_claimed'        // host took a slot without a topic
   | 'slot_scheduled'
   | 'slot_unscheduled'
   | 'notes_published'
@@ -142,6 +143,23 @@ export const Enqueue = {
       slateId: args.slateId,
       actorId: args.actorId,
       topicId: args.topicId,
+      meta: args.changeSummary ? { change_summary: args.changeSummary } : undefined,
+    });
+  },
+
+  // Host saved an edit to their wiki page on this slate. target_user_id
+  // is the host whose page was edited — for self-edits actor === target,
+  // for App-Admin edits they differ. The renderer reads target as the
+  // page subject and actor as the editor.
+  hostProfileEdited(ctx: APIContext, args: BaseArgs & {
+    targetUserId: string;
+    changeSummary?: string;
+  }) {
+    return logActivity(ctx, {
+      kind: 'host_profile_edited',
+      slateId: args.slateId,
+      actorId: args.actorId,
+      targetUserId: args.targetUserId,
       meta: args.changeSummary ? { change_summary: args.changeSummary } : undefined,
     });
   },
@@ -352,6 +370,29 @@ const RENDERERS: Record<ActivityKind, (r: ActivityRow, ctx: RenderContext) => To
     ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : [txt('a topic')]),
     ...(r.meta?.change_summary ? [txt(` — ${r.meta.change_summary}`)] : []),
   ],
+
+  host_profile_edited: (r) => {
+    // Self-edit (actor === target): "Bob edited their wiki page".
+    // Cross-edit (admin editing someone else's): "Alice edited Bob's
+    // wiki page". actor_id and target_user_id aren't both projected
+    // onto ActivityRow today, but the names are — equality on the
+    // *names* is the closest signal we have without joining ids in.
+    const isSelf = !!r.actor_email && !!r.target_email && r.actor_email === r.target_email;
+    if (isSelf) {
+      return [
+        name(actorName(r)),
+        txt(' edited their wiki page'),
+        ...(r.meta?.change_summary ? [txt(` — ${r.meta.change_summary}`)] : []),
+      ];
+    }
+    return [
+      name(actorName(r)),
+      txt(' edited '),
+      name(targetName(r)),
+      txt("'s wiki page"),
+      ...(r.meta?.change_summary ? [txt(` — ${r.meta.change_summary}`)] : []),
+    ];
+  },
 
   slot_claimed: (r, ctx) => [
     name(actorName(r)),

@@ -8,9 +8,11 @@ interface Props {
   spotify: string | null;
   youtube: string | null;
   rss: string | null;
+  /** Compact mode collapses to icon-only buttons (masthead use). */
+  compact?: boolean;
 }
 
-const { apple, spotify, youtube, rss } = Astro.props;
+const { apple, spotify, youtube, rss, compact = false } = Astro.props;
 
 const links: Array<{ key: string; href: string; label: string }> = [];
 if (apple)   links.push({ key: 'apple',   href: apple,   label: 'Apple Podcasts' });
@@ -20,12 +22,17 @@ if (rss)     links.push({ key: 'rss',     href: rss,     label: 'RSS' });
 ---
 
 {links.length > 0 && (
-  <div class="mt-6 flex flex-wrap items-center gap-2">
-    <span class="font-mono text-xs text-signal mr-1">// listen on</span>
+  <div class={compact
+    ? "flex flex-wrap items-center gap-1.5 shrink-0"
+    : "mt-6 flex flex-wrap items-center gap-2"}>
+    {!compact && <span class="font-mono text-xs text-signal mr-1">// listen on</span>}
     {links.map(l => (
       <a href={l.href} target="_blank" rel="noopener noreferrer"
-         class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-base-300 hover:border-signal hover:text-signal text-xs font-mono transition-colors"
-         aria-label={`Listen on ${l.label}`}>
+         class={compact
+           ? "inline-flex items-center justify-center w-8 h-8 rounded border border-base-300 hover:border-signal hover:text-signal transition-colors"
+           : "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-base-300 hover:border-signal hover:text-signal text-xs font-mono transition-colors"}
+         aria-label={`Listen on ${l.label}`}
+         title={compact ? l.label : undefined}>
         {l.key === 'apple' && (
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm-.5 16.7c-2.6 0-4.7-2.1-4.7-4.7v-3.7c0-.4.3-.7.7-.7s.7.3.7.7V14c0 1.8 1.4 3.2 3.2 3.2.4 0 .7.3.7.7s-.2.8-.6.8zm0-2.7c-1 0-1.9-.8-1.9-1.9V11c0-.4.3-.7.7-.7s.7.3.7.7v3.1c0 .3.2.5.5.5s.5-.2.5-.5V8.5c0-.4.3-.7.7-.7s.7.3.7.7v5.6c0 1-.8 1.9-1.9 1.9zm5.2-2c0 .4-.3.7-.7.7s-.7-.3-.7-.7V8c0-.4.3-.7.7-.7s.7.3.7.7v6z"/>
@@ -46,7 +53,7 @@ if (rss)     links.push({ key: 'rss',     href: rss,     label: 'RSS' });
             <path d="M6.5 17.5a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM4 11V8c5 0 9 4 9 9h-3a6 6 0 0 0-6-6zm0-7V1c11.6 0 21 9.4 21 21h-3C22 11.5 13.5 4 4 4z"/>
           </svg>
         )}
-        <span>{l.label}</span>
+        {!compact && <span>{l.label}</span>}
       </a>
     ))}
   </div>
