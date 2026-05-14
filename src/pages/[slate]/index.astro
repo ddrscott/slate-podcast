@@ -149,7 +149,7 @@ const [shows, upcoming, topTopics, pastEpisodes] = await Promise.all([
 <Layout
   title={`${slate.name} · slate.ljs.app`}
   description={slate.description ?? undefined}
-  slate={{ name: slate.name, slug: slate.slug }}
+  slate={{ name: slate.name, slug: slate.slug, artwork_image_url: slate.artwork_image_url }}
   slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null, unreadActivity }}
 >
   <SlateMarquee

@@ -7,8 +7,7 @@
 // hosts; the page sells the program emotionally before the form layer
 // (vote / suggest / claim) shows up after sign-in.
 
-import { displayName, emailLocal } from '@/lib/people';
-import ListenOnRow from '@/components/ListenOnRow.astro';
+import { displayName } from '@/lib/people';
 
 interface Show {
   id: string;
@@ -97,16 +96,7 @@ const hostNameOrFallback = (display: string | null, email: string | null) =>
   email ? displayName({ display_name: display, email }) : '(unassigned)';
 
 const showCount = shows.length;
-const topicCount = topTopics.length;
 const episodeCount = pastEpisodes.length;
-
-// Eyebrow line above the hero title. Drops the show count when there
-// are no shows yet (a brand-new slate) so we don't print "// a network
-// of 0 shows" — the slate is fine, it just hasn't created any yet.
-const tzShort = slate.timezone.split('/').pop()?.replace('_', ' ');
-const eyebrowText = showCount === 0
-  ? `// a new slate · ${tzShort}`
-  : `// a network of ${showCount === 1 ? 'one show' : `${showCount} shows`} · ${tzShort}`;
 
 // Primary CTA depends on viewer relationship to the slate:
 //   visitor          → sign in (and come back here)
@@ -128,81 +118,22 @@ if (isMember || isHost) {
 
 <article class="-mt-8" data-marquee-theme
          style={slate.marquee_accent ? `--ms-accent: ${slate.marquee_accent};` : undefined}>
-  {/* ─── Masthead ────────────────────────────────────────────────────── */}
-  {/* Compact identity band: artwork tile + slate name + description +
-      listen-on links. Sits above the next-show hero so listeners see
-      what slate they're on, then immediately what's coming up.
-      The big "what is this place" moment is the next-show hero below.
-      Empty-state when no upcoming: this band gets more visual weight. */}
-  <section class={`relative -mx-4 px-4 overflow-hidden border-b border-base-300 ${
-    upcoming.length > 0 ? 'py-6 md:py-8' : 'py-12 md:py-20'
-  }`}>
-    {slate.cover_image_url && (
-      <div class="absolute inset-0 -z-10">
-        <img src={slate.cover_image_url} alt=""
-             class="w-full h-full object-cover opacity-30 blur-xl scale-110" />
-        <div class="absolute inset-0 bg-gradient-to-b from-base-100/70 via-base-100/85 to-base-100"></div>
-      </div>
-    )}
-    {!slate.cover_image_url && (
-      <div class="absolute inset-0 -z-10 bg-signal/[0.04]"></div>
-    )}
-
-    <div class={`max-w-5xl ${upcoming.length > 0
-      ? 'flex flex-wrap items-center gap-4 md:gap-6'
-      : 'grid gap-8 md:gap-12 items-center ' + (slate.artwork_image_url ? 'md:grid-cols-[auto,1fr]' : '')}`}>
-      {slate.artwork_image_url && (
-        <img src={slate.artwork_image_url} alt={`${slate.name} artwork`}
-             class={upcoming.length > 0
-               ? "w-14 h-14 md:w-20 md:h-20 aspect-square object-cover rounded shadow-md border border-base-300 shrink-0"
-               : "w-44 sm:w-56 md:w-64 lg:w-72 aspect-square object-cover rounded-lg shadow-2xl border border-base-300 mx-auto md:mx-0"} />
-      )}
-      <div class="min-w-0 flex-1">
-        <p class="font-mono text-[10px] md:text-xs text-signal">{eyebrowText}</p>
-        <h1 class={upcoming.length > 0
-            ? "text-2xl md:text-4xl font-bold tracking-tight leading-tight mt-0.5"
-            : "text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[0.95] mt-3"}>
-          {slate.name}
-        </h1>
-        {slate.description && upcoming.length === 0 && (
-          <p class="mt-6 text-lg md:text-xl opacity-80 max-w-2xl leading-relaxed">
-            {slate.description}
-          </p>
-        )}
-        {slate.description && upcoming.length > 0 && (
-          <p class="text-xs md:text-sm opacity-70 mt-1 line-clamp-1 max-w-3xl">
-            {slate.description}
-          </p>
-        )}
-        {upcoming.length === 0 && (
-          <>
-            <div class="mt-6 inline-block w-12 h-[3px] bg-signal"></div>
-            <div class="mt-8 flex flex-wrap items-center gap-3">
-              <a href={primaryCtaHref} class="btn btn-primary">{primaryCtaLabel}</a>
-              {topicCount > 0 && (
-                <a href="#topics" class="btn btn-ghost border border-base-300">
-                  Browse {topicCount} {topicCount === 1 ? 'topic' : 'topics'} →
-                </a>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-      <ListenOnRow
-        apple={slate.listen_apple_url}
-        spotify={slate.listen_spotify_url}
-        youtube={slate.listen_youtube_url}
-        rss={slate.listen_rss_url}
-        compact={upcoming.length > 0}
-      />
-    </div>
-  </section>
+  {/* The slate's brand identity (logo + name) lives in the Layout nav
+      now — see src/layouts/Layout.astro. This component used to render
+      a redundant masthead with the same identity; that's removed. The
+      page jumps straight to the next-show hero below. Slate-level
+      listen-on URLs live on per-show pages where they're actually
+      filled in (most slates don't carry network-wide feeds). */}
+  {/* Visually-hidden H1 so screen readers and search engines still
+      have one top-level heading per page. The visible "what is this"
+      cue is the logo + name in the nav. */}
+  <h1 class="sr-only">{slate.name}</h1>
 
   {/* ─── Next-show hero ──────────────────────────────────────────────── */}
   {/* This is THE moment for a listener. Big art on the left, big date/
-      title/host on the right — promoted from the old "Up next" header
-      to be the dominant element of the page. The slate-name masthead
-      above identifies the network; this card sells the next episode. */}
+      title/host on the right. The slate's brand (logo + name) is in
+      the Layout nav; this card is the first content block on the
+      marquee and sells the next episode. */}
   {upcoming.length > 0 && (
     <section class="py-10 md:py-14">
       <p class="font-mono text-xs text-signal mb-3">// next up · {slate.timezone}</p>

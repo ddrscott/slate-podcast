@@ -8,7 +8,9 @@ import '@/styles/marquee-theme.css';
 interface Props {
   title?: string;
   description?: string;
-  slate?: { name: string; slug: string };
+  // `artwork_image_url` is the slate's square logo used in the nav
+  // brand block. Optional — falls back to the slate name in text.
+  slate?: { name: string; slug: string; artwork_image_url?: string | null };
   // Per-slate context — pages that know the viewer's role and unread-activity
   // count pass them in so the nav can render the Activity icon, the Manage
   // shortcut, and the role line in the Account dropdown without re-querying.
@@ -83,10 +85,27 @@ const computedOgDescription = ogDescription ?? (slate
   <body class="min-h-screen flex flex-col bg-base-100 text-base-content font-sans antialiased">
     <header class="border-b border-base-300">
       <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-        <a href={brandHref} class="block min-w-0 no-underline" title={brandLabel}>
-          <div class="text-signal text-base md:text-lg font-bold tracking-tight leading-tight truncate font-mono">{brandLabel}</div>
-          <div class="opacity-40 text-[10px] md:text-xs leading-tight font-mono hidden sm:block">// slate.ljs.app</div>
-        </a>
+        {slate ? (
+          <a href={brandHref} class="flex items-center gap-3 min-w-0 no-underline" title={brandLabel}>
+            {slate.artwork_image_url ? (
+              <img src={slate.artwork_image_url} alt=""
+                   class="w-9 h-9 md:w-10 md:h-10 rounded object-cover border border-base-300 shrink-0" />
+            ) : (
+              <div class="w-9 h-9 md:w-10 md:h-10 rounded bg-gradient-to-br from-signal/20 to-base-200 border border-base-300 flex items-center justify-center text-base font-bold font-mono shrink-0">
+                {slate.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div class="min-w-0">
+              <div class="text-signal text-sm md:text-base font-bold tracking-tight leading-tight truncate">{slate.name}</div>
+              <div class="opacity-40 text-[10px] md:text-xs leading-tight font-mono hidden sm:block">// slate.ljs.app</div>
+            </div>
+          </a>
+        ) : (
+          <a href={brandHref} class="block min-w-0 no-underline" title={brandLabel}>
+            <div class="text-signal text-base md:text-lg font-bold tracking-tight leading-tight truncate font-mono">{brandLabel}</div>
+            <div class="opacity-40 text-[10px] md:text-xs leading-tight font-mono hidden sm:block">// slate.ljs.app</div>
+          </a>
+        )}
 
         <nav class="text-sm flex items-center gap-1 sm:gap-2 shrink-0">
           {showActivityIcon && (
