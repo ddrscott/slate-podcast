@@ -1,0 +1,91 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import ShowEditor from '@/components/ShowEditor';
+import { getDb, getEnv } from '@/lib/db';
+import { isAppAdmin, signInUrl } from '@/lib/auth';
+
+export const prerender = false;
+
+// Edit a show. Access: the show's host (shows.host_id), OR a slate
+// admin on the slate, OR an App Admin.
+
+const slug = Astro.params.slate;
+const showSlug = Astro.params.slug;
+if (!slug || !showSlug) return new Response('Not found', { status: 404 });
+
+const db = getDb(Astro);
+
+const slate = await db.prepare(
+  'SELECT id, slug, name, is_public FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; slug: string; name: string; is_public: number }>();
+if (!slate) return new Response('Not found', { status: 404 });
+if (!slate.is_public) return new Response('Private slate', { status: 403 });
+
+const show = await db.prepare(
+  `SELECT id, slug, name, description, link, cover_image_url, wiki_body, host_id,
+          listen_apple_url, listen_spotify_url, listen_youtube_url, listen_rss_url
+   FROM shows WHERE slate_id = ? AND slug = ?`,
+).bind(slate.id, showSlug).first<{
+  id: string; slug: string; name: string;
+  description: string | null; link: string | null;
+  cover_image_url: string | null; wiki_body: string | null;
+  host_id: string | null;
+  listen_apple_url: string | null; listen_spotify_url: string | null;
+  listen_youtube_url: string | null; listen_rss_url: string | null;
+}>();
+if (!show) return new Response('Show not found', { status: 404 });
+
+const user = Astro.locals.user;
+const env = getEnv(Astro);
+const reqUrl = new URL(Astro.request.url);
+if (!user) {
+  return Astro.redirect(signInUrl(env, reqUrl.origin, `/${slate.slug}/shows/${show.slug}/edit`));
+}
+
+const isAdmin = isAppAdmin(user.scopes);
+const member = await db.prepare(
+  `SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string; is_admin: number }>();
+const isSlateAdmin = !!member?.is_admin || isAdmin;
+const isShowHost = user.id === show.host_id;
+if (!isShowHost && !isSlateAdmin) {
+  return Astro.redirect(`/${slate.slug}/shows/${show.slug}`);
+}
+
+const isMember = !!member;
+const isHost = (member?.role === 'host' || !!member?.is_admin) || isAdmin;
+---
+
+<Layout
+  title={`Edit · ${show.name}`}
+  slate={{ name: slate.name, slug: slate.slug }}
+  slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
+>
+  <article class="py-6 md:py-8 max-w-4xl">
+    <p class="text-xs font-mono opacity-60 mb-4">
+      <a href={`/${slate.slug}/shows/${show.slug}`} class="link link-hover">← {show.name}</a>
+    </p>
+
+    <h1 class="text-2xl md:text-3xl font-bold mb-2">Editing show</h1>
+    <p class="text-sm opacity-70 mb-6">
+      <span class="font-mono">// {show.name}</span>
+    </p>
+
+    <ShowEditor
+      client:load
+      slateId={slate.id}
+      slateSlug={slate.slug}
+      showId={show.id}
+      showSlug={show.slug}
+      initialName={show.name}
+      initialDescription={show.description}
+      initialLink={show.link}
+      initialCoverUrl={show.cover_image_url}
+      initialWiki={show.wiki_body}
+      initialApple={show.listen_apple_url}
+      initialSpotify={show.listen_spotify_url}
+      initialYoutube={show.listen_youtube_url}
+      initialRss={show.listen_rss_url}
+    />
+  </article>
+</Layout>

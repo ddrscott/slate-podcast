@@ -64,54 +64,61 @@ if (user && (isMember || isAdmin)) {
 }
 
 // Marquee data — same queries for everyone since this is always public.
-const [hosts, upcoming, topTopics, pastEpisodes] = await Promise.all([
+//
+// Hosts grid is now a Shows grid. Each show is a row; the host fields
+// come along via LEFT JOIN so we can surface "hosted by X" under the
+// show name. episode_count counts past published/recorded slots tied
+// to this show.
+const [shows, upcoming, topTopics, pastEpisodes] = await Promise.all([
   db.prepare(
-    `SELECT u.id, u.display_name, u.email, u.headshot_url, u.tagline, u.bio, u.link,
-            sm.show_name, sm.show_logo_url,
+    `SELECT s.id, s.slug, s.name, s.description, s.cover_image_url,
+            s.host_id,
+            u.display_name AS host_display_name,
+            u.email        AS host_email,
+            u.headshot_url AS host_headshot_url,
             COUNT(DISTINCT CASE
               WHEN sl.start_time < unixepoch() AND sl.status IN ('recorded','published')
               THEN sl.id END) AS episode_count
-     FROM slate_members sm
-     JOIN users u ON u.id = sm.user_id
-     LEFT JOIN slots sl ON sl.host_id = u.id AND sl.slate_id = sm.slate_id
-     WHERE sm.slate_id = ? AND sm.role = 'host'
-     GROUP BY u.id
-     ORDER BY episode_count DESC, COALESCE(sm.show_name, u.display_name, u.email)`,
+     FROM shows s
+     LEFT JOIN users u ON u.id = s.host_id
+     LEFT JOIN slots sl ON sl.show_id = s.id
+     WHERE s.slate_id = ?
+     GROUP BY s.id
+     ORDER BY episode_count DESC, LOWER(s.name)`,
   ).bind(slate.id).all<{
-    id: string; display_name: string | null; email: string;
-    headshot_url: string | null; tagline: string | null;
-    bio: string | null; link: string | null;
-    show_name: string | null; show_logo_url: string | null;
+    id: string; slug: string; name: string;
+    description: string | null; cover_image_url: string | null;
+    host_id: string | null;
+    host_display_name: string | null; host_email: string | null;
+    host_headshot_url: string | null;
     episode_count: number;
   }>(),
   db.prepare(
-    `SELECT sl.id, sl.start_time, sl.promo_image_url, sl.topic_id,
+    `SELECT sl.id, sl.start_time, sl.promo_image_url, sl.topic_id, sl.show_id,
             COALESCE(sl.custom_title, sug.title) AS title,
             u.display_name AS host_display_name,
             u.email        AS host_email,
             u.headshot_url AS host_headshot_url,
-            sm.show_name      AS host_show_name,
-            sm.show_logo_url  AS host_show_logo_url
+            sh.slug            AS show_slug,
+            sh.name            AS show_name,
+            sh.cover_image_url AS show_cover
      FROM slots sl
      LEFT JOIN topics sug ON sug.id = sl.topic_id
-     LEFT JOIN users u ON u.id = sl.host_id
-     LEFT JOIN slate_members sm
-       ON sm.slate_id = sl.slate_id AND sm.user_id = sl.host_id
+     LEFT JOIN users u    ON u.id = sl.host_id
+     LEFT JOIN shows sh   ON sh.id = sl.show_id
      WHERE sl.slate_id = ? AND sl.start_time >= unixepoch()
        AND sl.status NOT IN ('cancelled')
      ORDER BY sl.start_time LIMIT 6`,
   ).bind(slate.id).all<{
     id: string; start_time: number; title: string | null;
-    topic_id: string | null;
+    topic_id: string | null; show_id: string | null;
     promo_image_url: string | null;
     host_display_name: string | null; host_email: string | null;
     host_headshot_url: string | null;
-    host_show_name: string | null; host_show_logo_url: string | null;
+    show_slug: string | null; show_name: string | null;
+    show_cover: string | null;
   }>(),
-  // Topic Pool — open AND not already attached to a slot. The status flag
-  // and scheduled_slot_id should agree (status flips to 'scheduled' when a
-  // topic gets a slot), but we filter on both as a belt-and-suspenders so
-  // a topic can't appear under "Up next" and in the pool simultaneously.
+  // Topic Pool — open AND not already attached to a slot.
   db.prepare(
     `SELECT id, title, upvote_count FROM topics
      WHERE slate_id = ? AND status = 'open' AND scheduled_slot_id IS NULL
@@ -121,16 +128,20 @@ const [hosts, upcoming, topTopics, pastEpisodes] = await Promise.all([
     `SELECT sl.id, sl.start_time,
             COALESCE(sl.custom_title, sug.title) AS title,
             u.display_name AS host_display_name,
-            u.email        AS host_email
+            u.email        AS host_email,
+            sh.slug AS show_slug,
+            sh.name AS show_name
      FROM slots sl
      LEFT JOIN topics sug ON sug.id = sl.topic_id
-     LEFT JOIN users u ON u.id = sl.host_id
+     LEFT JOIN users u    ON u.id = sl.host_id
+     LEFT JOIN shows sh   ON sh.id = sl.show_id
      WHERE sl.slate_id = ? AND sl.start_time < unixepoch()
        AND sl.status IN ('recorded','published')
      ORDER BY sl.start_time DESC LIMIT 12`,
   ).bind(slate.id).all<{
     id: string; start_time: number; title: string | null;
     host_display_name: string | null; host_email: string | null;
+    show_slug: string | null; show_name: string | null;
   }>(),
 ]);
 ---
@@ -143,7 +154,7 @@ const [hosts, upcoming, topTopics, pastEpisodes] = await Promise.all([
 >
   <SlateMarquee
     slate={slate}
-    hosts={hosts.results}
+    shows={shows.results}
     upcoming={upcoming.results}
     topTopics={topTopics.results}
     pastEpisodes={pastEpisodes.results}

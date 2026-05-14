@@ -1,0 +1,169 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import EditSubnav from '@/components/EditSubnav.astro';
+import { getDb } from '@/lib/db';
+import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
+import { displayName } from '@/lib/people';
+
+export const prerender = false;
+
+// Slate-level shows listing. Hosts see their own + everyone else's;
+// admins can edit any. The "+ New show" affordance is host/admin-only;
+// the create POST then opens the show's edit page so the host fills
+// in name, cover, wiki, listen-on URLs.
+
+const slug = Astro.params.slate;
+if (!slug) return new Response('Not found', { status: 404 });
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/edit/shows`));
+
+const db = getDb(Astro);
+const slate = await db.prepare('SELECT id, slug, name FROM slates WHERE slug = ?').bind(slug)
+  .first<{ id: string; slug: string; name: string }>();
+if (!slate) return new Response('Not found', { status: 404 });
+
+const member = await db.prepare(
+  'SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?',
+).bind(slate.id, user.id).first<{ role: string; is_admin: number }>();
+if (!isAppAdmin(user.scopes) && member?.role !== 'host' && !member?.is_admin) {
+  return new Response('Host required', { status: 403 });
+}
+const isAdmin = isAppAdmin(user.scopes);
+const isSlateAdmin = !!member?.is_admin || isAdmin;
+
+const shows = await db.prepare(
+  `SELECT s.id, s.slug, s.name, s.description, s.cover_image_url, s.host_id, s.created_at,
+          u.email AS host_email, u.display_name AS host_display_name,
+          u.headshot_url AS host_headshot_url,
+          (SELECT COUNT(*) FROM slots WHERE show_id = s.id) AS slot_count,
+          (SELECT COUNT(*) FROM slots WHERE show_id = s.id
+             AND start_time < unixepoch() AND status IN ('recorded','published')) AS episode_count
+   FROM shows s
+   LEFT JOIN users u ON u.id = s.host_id
+   WHERE s.slate_id = ?
+   ORDER BY LOWER(s.name)`,
+).bind(slate.id).all<any>();
+
+const hostsForCreate = isSlateAdmin ? await db.prepare(
+  `SELECT u.id, u.email, u.display_name
+   FROM slate_members sm JOIN users u ON u.id = sm.user_id
+   WHERE sm.slate_id = ? AND sm.role = 'host'
+   ORDER BY COALESCE(u.display_name, u.email)`,
+).bind(slate.id).all<{ id: string; email: string; display_name: string | null }>() : { results: [] };
+---
+
+<Layout title={`Shows · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}
+        slateContext={{ isMember: true, isHost: true, role: 'host' }}>
+  <EditSubnav slug={slug!} isHost={true} current="shows" />
+  <section class="py-6 max-w-4xl">
+    <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+      <div>
+        <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
+        <h1 class="text-2xl font-bold">Shows</h1>
+        <p class="text-xs opacity-60 mt-1">
+          Each program in the network. A host can create their own show;
+          slate admins can create shows for anyone.
+        </p>
+      </div>
+      <button id="new-show-btn" type="button" class="btn btn-sm btn-primary">+ New show</button>
+    </div>
+
+    <div class="space-y-2">
+      {shows.results.length === 0 && <p class="opacity-60 text-sm">No shows yet.</p>}
+      {shows.results.map((s: any) => {
+        const hostName = s.host_email ? displayName({ display_name: s.host_display_name, email: s.host_email }) : '(no host)';
+        return (
+          <div class="card border border-base-300 bg-base-100">
+            <div class="card-body py-3 flex-row items-center gap-4">
+              <div class="shrink-0">
+                {s.cover_image_url
+                  ? <img src={s.cover_image_url} alt="" class="w-14 h-14 rounded object-cover border border-base-300" />
+                  : <div class="w-14 h-14 rounded bg-gradient-to-br from-signal/15 to-base-200 border border-base-300 flex items-center justify-center text-xl font-mono opacity-60">{s.name.charAt(0).toUpperCase()}</div>}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-baseline gap-2 flex-wrap">
+                  <a href={`/${slug}/shows/${s.slug}`} class="font-semibold hover:text-signal">{s.name}</a>
+                  <span class="font-mono text-xs opacity-50">/{s.slug}</span>
+                </div>
+                <p class="text-xs opacity-60 mt-0.5">
+                  hosted by <span class="font-semibold">{hostName}</span>
+                  <span class="opacity-50"> · {s.episode_count} ep · {s.slot_count} slot{s.slot_count === 1 ? '' : 's'}</span>
+                </p>
+              </div>
+              <a href={`/${slug}/shows/${s.slug}/edit`} class="btn btn-xs btn-ghost border border-base-300">Edit</a>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </section>
+
+  {/* New show dialog */}
+  <dialog id="new-show-dialog" class="modal">
+    <form id="new-show-form" class="modal-box max-w-md">
+      <h3 class="font-bold text-lg">New show</h3>
+      <label class="form-control mt-3 block">
+        <span class="label-text text-sm">Show name</span>
+        <input id="ns-name" name="name" required maxlength="120"
+               placeholder='e.g. "Sin, Silence, Sentence"'
+               class="input input-bordered w-full" />
+      </label>
+      {isSlateAdmin && hostsForCreate.results.length > 0 && (
+        <label class="form-control mt-3 block">
+          <span class="label-text text-sm">Host</span>
+          <select id="ns-host" name="host_id" class="select select-bordered w-full">
+            <option value="">— me —</option>
+            {hostsForCreate.results.map(h => (
+              <option value={h.id}>
+                {displayName({ display_name: h.display_name, email: h.email })}
+              </option>
+            ))}
+          </select>
+          <span class="text-xs opacity-60 mt-1 block">Defaults to you. Slate admins can pick any host.</span>
+        </label>
+      )}
+      <p id="ns-status" class="text-sm mt-3 hidden"></p>
+      <div class="modal-action">
+        <button type="button" id="ns-cancel" class="btn btn-ghost">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script is:inline define:vars={{ slateId: slate.id, slateSlug: slate.slug }}>
+    const dialog = document.getElementById('new-show-dialog');
+    const openBtn = document.getElementById('new-show-btn');
+    const cancelBtn = document.getElementById('ns-cancel');
+    const form = document.getElementById('new-show-form');
+    const status = document.getElementById('ns-status');
+
+    openBtn?.addEventListener('click', () => dialog?.showModal());
+    cancelBtn?.addEventListener('click', () => dialog?.close());
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = new FormData(form);
+      status.classList.remove('hidden', 'text-error', 'text-success');
+      status.textContent = 'Creating…';
+      const body = { name: data.get('name') };
+      const hostId = data.get('host_id');
+      if (hostId) body.host_id = hostId;
+      const res = await fetch(`/api/slates/${slateId}/shows`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const body = await res.json();
+        // Land on the new show's edit page so the host can fill in cover,
+        // listen-on URLs, and the wiki without bouncing back to the list.
+        window.location.href = `/${slateSlug}/shows/${body.slug}/edit`;
+      } else {
+        const err = await res.json().catch(() => ({}));
+        status.classList.add('text-error');
+        status.textContent = `Failed: ${err.error ?? res.status}`;
+      }
+    });
+  </script>
+</Layout>

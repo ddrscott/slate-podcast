@@ -20,18 +20,18 @@ if (!slate || !slate.is_public) return new Response('Not found', { status: 404 }
 
 const slot = await db.prepare(
   `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status,
-          sl.host_id, sl.topic_id, sl.custom_title,
+          sl.host_id, sl.topic_id, sl.show_id, sl.custom_title,
           sl.show_notes, sl.show_notes_published_at, sl.promo_image_url,
           sug.title AS topic_title, sug.description AS topic_description,
           spk.email AS host_email, spk.display_name AS host_display_name,
           spk.headshot_url AS host_headshot_url,
-          sm.show_name      AS host_show_name,
-          sm.show_logo_url  AS host_show_logo_url
+          sh.slug            AS show_slug,
+          sh.name            AS show_name,
+          sh.cover_image_url AS show_cover
    FROM slots sl
    LEFT JOIN topics sug ON sug.id = sl.topic_id
    LEFT JOIN users spk ON spk.id = sl.host_id
-   LEFT JOIN slate_members sm
-     ON sm.slate_id = sl.slate_id AND sm.user_id = sl.host_id
+   LEFT JOIN shows sh   ON sh.id = sl.show_id
    WHERE sl.id = ? AND sl.slate_id = ?`,
 ).bind(slotId, slate.id).first<any>();
 if (!slot) return new Response('Slot not found', { status: 404 });
@@ -90,19 +90,25 @@ const availableTopics = isHost ? await db.prepare(
       <span>{fmtTime.format(new Date(startMs))} – {fmtTime.format(new Date(endMs))} {slate.timezone}</span>
       <span class="opacity-50">·</span>
       <span class="badge badge-outline badge-sm">{slot.status}</span>
+      {slot.show_id && slot.show_slug && (
+        <>
+          <span class="opacity-50">·</span>
+          <a href={`/${slug}/shows/${slot.show_slug}`} class="flex items-center gap-1.5 hover:text-signal transition-colors">
+            {slot.show_cover
+              ? <img src={slot.show_cover} alt="" class="w-5 h-5 rounded object-cover" />
+              : <span class="w-5 h-5 rounded bg-base-200 inline-flex items-center justify-center text-[10px] font-bold opacity-70">{(slot.show_name ?? '').charAt(0).toUpperCase()}</span>}
+            <span class="opacity-80 font-semibold">{slot.show_name}</span>
+          </a>
+        </>
+      )}
       {slot.host_id && (
         <>
           <span class="opacity-50">·</span>
           <a href={`/${slug}/hosts/${slot.host_id}`} class="flex items-center gap-1.5 hover:text-signal transition-colors">
-            {slot.host_show_logo_url
-              ? <img src={slot.host_show_logo_url} alt="" class="w-5 h-5 rounded object-cover" />
-              : slot.host_headshot_url
-                ? <img src={slot.host_headshot_url} alt="" class="w-5 h-5 rounded-full object-cover" />
-                : <span class="w-5 h-5 rounded-full bg-base-200 inline-flex items-center justify-center text-[10px] font-bold opacity-70">{(hostName ?? '').charAt(0).toUpperCase()}</span>}
-            <span class="opacity-70">
-              {slot.host_show_name ?? hostName}
-              {slot.host_show_name && hostName && <span class="opacity-60"> · {hostName}</span>}
-            </span>
+            {slot.host_headshot_url
+              ? <img src={slot.host_headshot_url} alt="" class="w-5 h-5 rounded-full object-cover" />
+              : <span class="w-5 h-5 rounded-full bg-base-200 inline-flex items-center justify-center text-[10px] font-bold opacity-70">{(hostName ?? '').charAt(0).toUpperCase()}</span>}
+            <span class="opacity-70">with {hostName}</span>
           </a>
         </>
       )}

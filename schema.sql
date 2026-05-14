@@ -98,6 +98,52 @@ CREATE TABLE IF NOT EXISTS slate_member_revisions (
 CREATE INDEX IF NOT EXISTS idx_slate_member_revisions_target
   ON slate_member_revisions(slate_id, user_id, created_at DESC);
 
+-- ─── Shows ────────────────────────────────────────────────────────────────
+-- A show is a distinct program within a slate (a network). A show has
+-- ONE default host (slate_members.user_id with role='host'), its own
+-- cover image, its own wiki page, and its own external-distribution
+-- links (Apple / Spotify / YouTube / RSS).
+--
+-- A host runs a show by default — but slots.host_id can override the
+-- show's host for substitutions ("Bob is subbing in for Jacob on the
+-- Tuesday slot of Sin Silence Sentence"). Substitutes don't claim the
+-- show; they just run that episode.
+--
+-- Wiki content lives on shows.wiki_body (markdown). slate_members.
+-- profile_body is preserved during the transition but no longer the
+-- read source — it'll be dropped in a follow-up migration.
+CREATE TABLE IF NOT EXISTS shows (
+  id                  TEXT PRIMARY KEY,
+  slate_id            TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
+  host_id             TEXT REFERENCES users(id) ON DELETE SET NULL,
+  slug                TEXT NOT NULL,
+  name                TEXT NOT NULL,
+  description         TEXT,
+  cover_image_url     TEXT,
+  wiki_body           TEXT,
+  link                TEXT,
+  listen_apple_url    TEXT,
+  listen_spotify_url  TEXT,
+  listen_youtube_url  TEXT,
+  listen_rss_url      TEXT,
+  created_at          INTEGER NOT NULL,
+  UNIQUE (slate_id, slug)
+);
+CREATE INDEX IF NOT EXISTS idx_shows_slate ON shows(slate_id);
+CREATE INDEX IF NOT EXISTS idx_shows_host  ON shows(host_id);
+
+-- Append-only history of show wiki saves.
+CREATE TABLE IF NOT EXISTS show_revisions (
+  id              TEXT PRIMARY KEY,
+  show_id         TEXT NOT NULL REFERENCES shows(id) ON DELETE CASCADE,
+  body            TEXT NOT NULL,
+  author_id       TEXT REFERENCES users(id) ON DELETE SET NULL,
+  change_summary  TEXT,
+  created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_show_revisions_show
+  ON show_revisions(show_id, created_at DESC);
+
 -- ─── Recurrence rules ──────────────────────────────────────────────────────
 -- Hosts (or App Admins) configure these per slate. Slot generation
 -- combines all active rules and is idempotent via UNIQUE(slate_id, start_time).
@@ -130,6 +176,7 @@ CREATE TABLE IF NOT EXISTS slots (
   id TEXT PRIMARY KEY,
   slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
   rule_id TEXT REFERENCES slot_rules(id) ON DELETE SET NULL,
+  show_id TEXT REFERENCES shows(id) ON DELETE SET NULL,
   start_time INTEGER NOT NULL,
   duration_minutes INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'open'
@@ -147,6 +194,7 @@ CREATE TABLE IF NOT EXISTS slots (
 CREATE INDEX IF NOT EXISTS idx_slots_slate_time ON slots(slate_id, start_time);
 CREATE INDEX IF NOT EXISTS idx_slots_status ON slots(slate_id, status);
 CREATE INDEX IF NOT EXISTS idx_slots_host ON slots(host_id);
+CREATE INDEX IF NOT EXISTS idx_slots_show ON slots(show_id);
 
 CREATE TABLE IF NOT EXISTS slot_assets (
   id TEXT PRIMARY KEY,

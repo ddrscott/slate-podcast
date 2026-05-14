@@ -1,0 +1,279 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import ShowNotesView from '@/components/ShowNotesView';
+import ListenOnRow from '@/components/ListenOnRow.astro';
+import { getDb, getEnv } from '@/lib/db';
+import { isAppAdmin, signInUrl } from '@/lib/auth';
+import { displayName } from '@/lib/people';
+
+export const prerender = false;
+
+// Public show page. A show is a program — its own identity, wiki, cover,
+// listen-on links. Distinct from the host (a person who runs it).
+//
+// Anyone with the link can read. The show's host (or slate admin / App
+// Admin) sees an "Edit show" button.
+
+const slug = Astro.params.slate;
+const showSlug = Astro.params.slug;
+if (!slug || !showSlug) return new Response('Not found', { status: 404 });
+
+const db = getDb(Astro);
+
+const slate = await db.prepare(
+  'SELECT id, slug, name, timezone, is_public FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; slug: string; name: string; timezone: string; is_public: number }>();
+if (!slate) return new Response('Not found', { status: 404 });
+if (!slate.is_public) return new Response('Private slate', { status: 403 });
+
+const show = await db.prepare(
+  `SELECT s.id, s.slug, s.name, s.description, s.cover_image_url, s.wiki_body,
+          s.link, s.host_id, s.created_at,
+          s.listen_apple_url, s.listen_spotify_url, s.listen_youtube_url, s.listen_rss_url,
+          u.email AS host_email, u.display_name AS host_display_name,
+          u.headshot_url AS host_headshot_url
+   FROM shows s
+   LEFT JOIN users u ON u.id = s.host_id
+   WHERE s.slate_id = ? AND s.slug = ?`,
+).bind(slate.id, showSlug).first<{
+  id: string; slug: string; name: string;
+  description: string | null; cover_image_url: string | null;
+  wiki_body: string | null; link: string | null;
+  host_id: string | null; created_at: number;
+  listen_apple_url: string | null; listen_spotify_url: string | null;
+  listen_youtube_url: string | null; listen_rss_url: string | null;
+  host_email: string | null; host_display_name: string | null;
+  host_headshot_url: string | null;
+}>();
+if (!show) return new Response('Show not found', { status: 404 });
+
+const user = Astro.locals.user;
+const isAdmin = isAppAdmin(user?.scopes);
+const member = user ? await db.prepare(
+  `SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string; is_admin: number }>() : null;
+const isMember = !!member;
+const isHost = (member?.role === 'host' || !!member?.is_admin) || isAdmin;
+const isShowHost = !!user && show.host_id === user.id;
+const isSlateAdmin = !!member?.is_admin || isAdmin;
+const canEdit = isShowHost || isSlateAdmin;
+
+const env = getEnv(Astro);
+const reqUrl = new URL(Astro.request.url);
+const signInHref = signInUrl(env, reqUrl.origin, `/${slate.slug}/shows/${show.slug}`);
+
+// Upcoming + recent episodes for this show. Two queries cleaner than
+// one with conditional ORDER BY.
+const upcoming = await db.prepare(
+  `SELECT sl.id, sl.start_time, sl.status,
+          COALESCE(sl.custom_title, sug.title) AS title
+   FROM slots sl
+   LEFT JOIN topics sug ON sug.id = sl.topic_id
+   WHERE sl.show_id = ? AND sl.start_time >= unixepoch() AND sl.status != 'cancelled'
+   ORDER BY sl.start_time LIMIT 8`,
+).bind(show.id).all<{ id: string; start_time: number; status: string; title: string | null }>();
+
+const past = await db.prepare(
+  `SELECT sl.id, sl.start_time, sl.status,
+          COALESCE(sl.custom_title, sug.title) AS title
+   FROM slots sl
+   LEFT JOIN topics sug ON sug.id = sl.topic_id
+   WHERE sl.show_id = ? AND sl.start_time < unixepoch()
+     AND sl.status IN ('recorded','published')
+   ORDER BY sl.start_time DESC LIMIT 12`,
+).bind(show.id).all<{ id: string; start_time: number; status: string; title: string | null }>();
+
+const revisions = await db.prepare(
+  `SELECT r.id, r.change_summary, r.created_at,
+          u.email AS author_email, u.display_name AS author_display_name
+   FROM show_revisions r
+   LEFT JOIN users u ON u.id = r.author_id
+   WHERE r.show_id = ?
+   ORDER BY r.created_at DESC
+   LIMIT 20`,
+).bind(show.id).all<{
+  id: string; change_summary: string | null; created_at: number;
+  author_email: string | null; author_display_name: string | null;
+}>();
+
+const hostName = show.host_email
+  ? displayName({ display_name: show.host_display_name, email: show.host_email })
+  : null;
+
+const fmtUpcoming = new Intl.DateTimeFormat('en-US', {
+  timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
+  hour: 'numeric', minute: '2-digit',
+});
+const fmtPast = new Intl.DateTimeFormat('en-US', {
+  timeZone: slate.timezone, month: 'short', day: 'numeric', year: 'numeric',
+});
+const fmtRevision = new Intl.DateTimeFormat('en-US', {
+  timeZone: slate.timezone, month: 'short', day: 'numeric', year: 'numeric',
+  hour: 'numeric', minute: '2-digit',
+});
+---
+
+<Layout
+  title={`${show.name} · ${slate.name}`}
+  description={show.description ?? `${show.name} on ${slate.name}`}
+  slate={{ name: slate.name, slug: slate.slug }}
+  slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
+>
+  <article class="py-6 md:py-8 max-w-4xl">
+    <p class="text-xs font-mono opacity-60 mb-4">
+      <a href={`/${slate.slug}`} class="link link-hover">← {slate.name}</a>
+    </p>
+
+    {/* Header — cover + show name + host byline + listen-on */}
+    <header class="flex flex-wrap items-start gap-5 md:gap-6">
+      <div class="shrink-0">
+        {show.cover_image_url ? (
+          <img src={show.cover_image_url} alt=""
+               class="w-32 h-32 md:w-44 md:h-44 rounded object-cover border border-base-300 shadow-md" />
+        ) : (
+          <div class="w-32 h-32 md:w-44 md:h-44 rounded bg-gradient-to-br from-signal/20 to-base-200 border border-base-300 flex items-center justify-center text-5xl font-mono opacity-60">
+            {show.name.charAt(0).toUpperCase()}
+          </div>
+        )}
+      </div>
+      <div class="min-w-0 flex-1">
+        <h1 class="text-3xl md:text-5xl font-bold tracking-tight leading-tight">{show.name}</h1>
+        {hostName && show.host_id && (
+          <p class="text-sm opacity-70 mt-1">
+            hosted by{' '}
+            <a href={`/${slate.slug}/hosts/${show.host_id}`}
+               class="font-semibold hover:text-signal transition-colors">
+              {hostName}
+            </a>
+          </p>
+        )}
+        {show.description && (
+          <p class="mt-3 text-lg opacity-80 max-w-2xl leading-snug">{show.description}</p>
+        )}
+        {show.link && (
+          <p class="mt-3 text-sm">
+            <a href={show.link} target="_blank" rel="noopener noreferrer"
+               class="font-mono text-signal hover:underline">
+              ↗ {show.link.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+            </a>
+          </p>
+        )}
+        <ListenOnRow
+          apple={show.listen_apple_url}
+          spotify={show.listen_spotify_url}
+          youtube={show.listen_youtube_url}
+          rss={show.listen_rss_url}
+        />
+      </div>
+    </header>
+
+    {/* Wiki body */}
+    <section class="mt-10 border-t border-base-300 pt-8">
+      <header class="flex items-baseline justify-between mb-4">
+        <h2 class="text-xl md:text-2xl font-bold">
+          <span class="font-mono text-signal text-xs align-middle">// </span>
+          About the show
+        </h2>
+        {canEdit && (
+          <a href={`/${slate.slug}/shows/${show.slug}/edit`} class="btn btn-sm btn-primary">
+            {show.wiki_body ? 'Edit show' : 'Set up show'}
+          </a>
+        )}
+      </header>
+
+      {show.wiki_body ? (
+        <ShowNotesView client:load markdown={show.wiki_body} />
+      ) : (
+        <div class="rounded border border-dashed border-base-300 bg-base-200/40 p-6 text-center">
+          <p class="text-sm opacity-70">
+            {canEdit
+              ? <>Nothing written yet. <a href={`/${slate.slug}/shows/${show.slug}/edit`} class="link">Start the show page →</a></>
+              : <>This show's page hasn't been filled in yet.</>}
+          </p>
+        </div>
+      )}
+    </section>
+
+    {/* Upcoming episodes */}
+    {upcoming.results.length > 0 && (
+      <section class="mt-10 border-t border-base-300 pt-8">
+        <h2 class="text-xl md:text-2xl font-bold mb-4">Coming up</h2>
+        <ul class="divide-y divide-base-300/50">
+          {upcoming.results.map(e => (
+            <li>
+              <a href={`/${slate.slug}/slot/${e.id}`}
+                 class="block py-3 hover:bg-base-200/40 -mx-2 px-2 rounded transition-colors">
+                <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span class="font-mono text-xs text-signal w-44 shrink-0 tabular-nums">
+                    {fmtUpcoming.format(new Date(e.start_time * 1000))}
+                  </span>
+                  <span class="font-medium flex-1 min-w-0 truncate">
+                    {e.title ?? <span class="opacity-50 italic font-normal">No topic yet</span>}
+                  </span>
+                </div>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    {/* Past episodes */}
+    {past.results.length > 0 && (
+      <section class="mt-10 border-t border-base-300 pt-8">
+        <h2 class="text-xl md:text-2xl font-bold mb-4">Past episodes</h2>
+        <ul class="divide-y divide-base-300/50">
+          {past.results.map(e => (
+            <li>
+              <a href={`/${slate.slug}/slot/${e.id}`}
+                 class="block py-3 hover:bg-base-200/40 -mx-2 px-2 rounded transition-colors">
+                <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span class="font-mono text-xs opacity-60 w-24 shrink-0 tabular-nums">
+                    {fmtPast.format(new Date(e.start_time * 1000))}
+                  </span>
+                  <span class="font-medium flex-1 min-w-0 truncate">
+                    {e.title ?? <span class="opacity-50 italic font-normal">Untitled</span>}
+                  </span>
+                  <span class={`badge badge-sm ${
+                    e.status === 'published' ? 'badge-primary' : 'badge-ghost'
+                  }`}>{e.status}</span>
+                </div>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    {/* Edit history */}
+    {revisions.results.length > 0 && (
+      <section class="mt-10 border-t border-base-300 pt-8">
+        <h2 class="text-sm font-mono opacity-60 mb-3">// edits</h2>
+        <ul class="text-sm space-y-2">
+          {revisions.results.map(r => {
+            const editor = r.author_email
+              ? displayName({ display_name: r.author_display_name, email: r.author_email })
+              : '(unknown)';
+            return (
+              <li class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                <span class="font-mono text-xs opacity-50 w-44 shrink-0 tabular-nums">
+                  {fmtRevision.format(new Date(r.created_at * 1000))}
+                </span>
+                <span class="font-semibold">{editor}</span>
+                {r.change_summary && (
+                  <span class="opacity-70">— {r.change_summary}</span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    )}
+
+    {!user && (
+      <p class="mt-10 text-sm opacity-70">
+        <a href={signInHref} class="link link-hover text-signal">Sign in</a> to join this slate and contribute.
+      </p>
+    )}
+  </article>
+</Layout>

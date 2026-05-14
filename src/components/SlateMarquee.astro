@@ -10,16 +10,16 @@
 import { displayName, emailLocal } from '@/lib/people';
 import ListenOnRow from '@/components/ListenOnRow.astro';
 
-interface Host {
+interface Show {
   id: string;
-  display_name: string | null;
-  email: string;
-  headshot_url: string | null;
-  tagline: string | null;
-  bio: string | null;
-  link: string | null;
-  show_name: string | null;
-  show_logo_url: string | null;
+  slug: string;
+  name: string;
+  description: string | null;
+  cover_image_url: string | null;
+  host_id: string | null;
+  host_display_name: string | null;
+  host_email: string | null;
+  host_headshot_url: string | null;
   episode_count: number;
 }
 
@@ -28,12 +28,14 @@ interface UpcomingSlot {
   start_time: number;
   title: string | null;
   topic_id: string | null;
+  show_id: string | null;
   promo_image_url: string | null;
   host_display_name: string | null;
   host_email: string | null;
   host_headshot_url: string | null;
-  host_show_name: string | null;
-  host_show_logo_url: string | null;
+  show_slug: string | null;
+  show_name: string | null;
+  show_cover: string | null;
 }
 
 interface TopTopic {
@@ -48,6 +50,8 @@ interface PastEpisode {
   title: string | null;
   host_display_name: string | null;
   host_email: string | null;
+  show_slug: string | null;
+  show_name: string | null;
 }
 
 export interface MarqueeSlate {
@@ -67,7 +71,7 @@ export interface MarqueeSlate {
 
 interface Props {
   slate: MarqueeSlate;
-  hosts: Host[];
+  shows: Show[];
   upcoming: UpcomingSlot[];
   topTopics: TopTopic[];
   pastEpisodes: PastEpisode[];
@@ -77,7 +81,7 @@ interface Props {
   isHost: boolean;
 }
 
-const { slate, hosts, upcoming, topTopics, pastEpisodes, signInHref, isSignedIn, isMember, isHost } = Astro.props;
+const { slate, shows, upcoming, topTopics, pastEpisodes, signInHref, isSignedIn, isMember, isHost } = Astro.props;
 
 const fmtUpcoming = new Intl.DateTimeFormat('en-US', {
   timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
@@ -89,26 +93,20 @@ const fmtPast = new Intl.DateTimeFormat('en-US', {
   timeZone: slate.timezone, month: 'short', day: 'numeric', year: 'numeric',
 });
 
-const initials = (h: { display_name: string | null; email: string }) =>
-  displayName({ display_name: h.display_name, email: h.email }).charAt(0).toUpperCase();
-
-const hostName = (h: { display_name: string | null; email: string }) =>
-  displayName({ display_name: h.display_name, email: h.email });
-
 const hostNameOrFallback = (display: string | null, email: string | null) =>
   email ? displayName({ display_name: display, email }) : '(unassigned)';
 
-const hostCount = hosts.length;
+const showCount = shows.length;
 const topicCount = topTopics.length;
 const episodeCount = pastEpisodes.length;
 
-// Eyebrow line above the hero title. Drops the host count when there are
-// no hosts yet (a brand-new slate) so we don't print "// a network of
-// 0 hosts" — the slate is fine, it just hasn't promoted anyone yet.
+// Eyebrow line above the hero title. Drops the show count when there
+// are no shows yet (a brand-new slate) so we don't print "// a network
+// of 0 shows" — the slate is fine, it just hasn't created any yet.
 const tzShort = slate.timezone.split('/').pop()?.replace('_', ' ');
-const eyebrowText = hostCount === 0
+const eyebrowText = showCount === 0
   ? `// a new slate · ${tzShort}`
-  : `// a network of ${hostCount === 1 ? 'one host' : `${hostCount} hosts`} · ${tzShort}`;
+  : `// a network of ${showCount === 1 ? 'one show' : `${showCount} shows`} · ${tzShort}`;
 
 // Primary CTA depends on viewer relationship to the slate:
 //   visitor          → sign in (and come back here)
@@ -214,9 +212,9 @@ if (isMember || isHost) {
         const dateStr = fmtUpcoming.format(date);
         const timeStr = fmtUpcomingTime.format(date);
         const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
-        // Render precedence — see migration 0005 header.
-        const tileArt = s.promo_image_url ?? s.host_show_logo_url ?? slate.artwork_image_url;
-        const showName = s.host_show_name;
+        // Render precedence: per-slot promo > show cover > slate artwork.
+        const tileArt = s.promo_image_url ?? s.show_cover ?? slate.artwork_image_url;
+        const showName = s.show_name;
         const href = s.topic_id ? `/${slate.slug}/topics/${s.topic_id}` : `/${slate.slug}/slot/${s.id}`;
         return (
           <a href={href}
@@ -274,8 +272,8 @@ if (isMember || isHost) {
             const dateStr = fmtUpcoming.format(date);
             const timeStr = fmtUpcomingTime.format(date);
             const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
-            const tileArt = s.promo_image_url ?? s.host_show_logo_url ?? slate.artwork_image_url;
-            const showName = s.host_show_name;
+            const tileArt = s.promo_image_url ?? s.show_cover ?? slate.artwork_image_url;
+            const showName = s.show_name;
             const href = s.topic_id ? `/${slate.slug}/topics/${s.topic_id}` : `/${slate.slug}/slot/${s.id}`;
             return (
               <li>
@@ -316,61 +314,60 @@ if (isMember || isHost) {
     </section>
   )}
 
-  {/* ─── Hosts rail ──────────────────────────────────────────────────── */}
-  {hosts.length > 0 && (
+  {/* ─── Shows grid ──────────────────────────────────────────────────── */}
+  {/* The slate's roster of programs. Each show is a tile: cover image
+      (square) + show name + "hosted by X" line + episode count.
+      Clicking lands on /[slate]/shows/[slug] (the show's page), not
+      /[slate]/hosts/[id] (the person). The host's name is still a link
+      to their personal page within the card. */}
+  {shows.length > 0 && (
     <section class="py-12 md:py-16 border-t border-base-300">
       <header class="flex items-baseline justify-between mb-6">
-        <h2 class="text-2xl md:text-3xl font-bold tracking-tight">The hosts</h2>
+        <h2 class="text-2xl md:text-3xl font-bold tracking-tight">The shows</h2>
         <span class="font-mono text-xs opacity-50">
-          {hostCount} {hostCount === 1 ? 'host' : 'hosts'}
+          {showCount} {showCount === 1 ? 'show' : 'shows'}
         </span>
       </header>
       <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {hosts.map(h => {
-          // Show identity wins for the avatar tile (square logo, like an
-          // album cover); falls back to the host's headshot (circular,
-          // personal). Different shapes signal which is which.
-          const personName = hostName(h);
-          const primary = h.show_name ?? personName;
-          const secondary = h.show_name ? personName : null;
+        {shows.map(s => {
+          const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
           return (
           <li>
-          <a href={`/${slate.slug}/hosts/${h.id}`}
-             class="group flex gap-5 p-5 rounded-lg border border-base-300 hover:border-signal transition-colors h-full">
-            <div class="shrink-0">
-              {h.show_logo_url ? (
-                <img src={h.show_logo_url} alt=""
-                     class="w-20 h-20 md:w-24 md:h-24 rounded object-cover border border-base-300" />
-              ) : h.headshot_url ? (
-                <img src={h.headshot_url} alt=""
-                     class="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover border border-base-300" />
-              ) : (
-                <div class="w-20 h-20 md:w-24 md:h-24 rounded-full bg-base-200 border border-base-300 flex items-center justify-center text-3xl font-mono opacity-60">
-                  {initials(h)}
-                </div>
-              )}
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="flex items-baseline gap-2">
-                <span class="font-bold text-base md:text-lg truncate group-hover:text-signal transition-colors">{primary}</span>
-                {h.episode_count > 0 && (
-                  <span class="font-mono text-xs opacity-50 shrink-0">{h.episode_count} ep</span>
+            <a href={`/${slate.slug}/shows/${s.slug}`}
+               class="group flex gap-5 p-5 rounded-lg border border-base-300 hover:border-signal transition-colors h-full">
+              <div class="shrink-0">
+                {s.cover_image_url ? (
+                  <img src={s.cover_image_url} alt=""
+                       class="w-20 h-20 md:w-24 md:h-24 rounded object-cover border border-base-300" />
+                ) : (
+                  <div class="w-20 h-20 md:w-24 md:h-24 rounded bg-gradient-to-br from-signal/15 to-base-200 border border-base-300 flex items-center justify-center text-3xl font-mono opacity-60">
+                    {s.name.charAt(0).toUpperCase()}
+                  </div>
                 )}
               </div>
-              {secondary && (
-                <p class="text-xs opacity-60 mt-1 line-clamp-1">hosted by {secondary}</p>
-              )}
-              {h.tagline && (
-                <p class="text-sm opacity-70 mt-1 line-clamp-1">{h.tagline}</p>
-              )}
-              {h.bio && (
-                <p class="text-sm opacity-80 mt-2.5 line-clamp-3 leading-snug">{h.bio}</p>
-              )}
-              <p class="mt-3 font-mono text-xs text-signal opacity-0 group-hover:opacity-100 transition-opacity">
-                View page →
-              </p>
-            </div>
-          </a>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-baseline gap-2">
+                  <span class="font-bold text-base md:text-lg truncate group-hover:text-signal transition-colors">{s.name}</span>
+                  {s.episode_count > 0 && (
+                    <span class="font-mono text-xs opacity-50 shrink-0">{s.episode_count} ep</span>
+                  )}
+                </div>
+                {hostLabel && (
+                  <p class="text-xs opacity-60 mt-1 line-clamp-1 flex items-center gap-1.5">
+                    {s.host_headshot_url && (
+                      <img src={s.host_headshot_url} alt="" class="w-4 h-4 rounded-full object-cover" />
+                    )}
+                    <span>hosted by {hostLabel}</span>
+                  </p>
+                )}
+                {s.description && (
+                  <p class="text-sm opacity-80 mt-2 line-clamp-3 leading-snug">{s.description}</p>
+                )}
+                <p class="mt-3 font-mono text-xs text-signal opacity-0 group-hover:opacity-100 transition-opacity">
+                  View show →
+                </p>
+              </div>
+            </a>
           </li>
           );
         })}
@@ -440,6 +437,9 @@ if (isMember || isHost) {
         {pastEpisodes.map(e => {
           const dateStr = fmtPast.format(new Date(e.start_time * 1000));
           const hostLabel = e.host_email ? hostNameOrFallback(e.host_display_name, e.host_email) : null;
+          // Show name (the program) wins as the right-side label —
+          // listeners are reading by show, host is implicit.
+          const rightLabel = e.show_name ?? hostLabel;
           return (
             <li>
               <a href={`/${slate.slug}/slot/${e.id}`}
@@ -449,8 +449,8 @@ if (isMember || isHost) {
                   <span class="font-medium flex-1 min-w-0 truncate">
                     {e.title ?? <span class="opacity-50 italic font-normal">Untitled</span>}
                   </span>
-                  {hostLabel && (
-                    <span class="font-mono text-xs opacity-60 shrink-0">{hostLabel}</span>
+                  {rightLabel && (
+                    <span class="font-mono text-xs opacity-60 shrink-0">{rightLabel}</span>
                   )}
                 </div>
               </a>
@@ -462,19 +462,19 @@ if (isMember || isHost) {
   )}
 
   {/* ─── Empty state if nothing yet ──────────────────────────────────── */}
-  {hosts.length === 0 && upcoming.length === 0 && topTopics.length === 0 && pastEpisodes.length === 0 && (
+  {shows.length === 0 && upcoming.length === 0 && topTopics.length === 0 && pastEpisodes.length === 0 && (
     <section class="py-20 text-center max-w-2xl mx-auto">
       <p class="font-mono text-sm text-signal mb-2">// new slate</p>
       <h2 class="text-2xl font-bold">Nothing here yet.</h2>
       <p class="mt-3 opacity-70">
-        Hosts haven't been promoted, no topics in the pool, no episodes scheduled.
+        No shows created, no topics in the pool, no episodes scheduled.
         Check back soon, or <a href={primaryCtaHref} class="link link-hover text-signal">{primaryCtaLabel.toLowerCase()}</a>.
       </p>
     </section>
   )}
 
   {/* ─── Closing CTA ─────────────────────────────────────────────────── */}
-  {(hosts.length > 0 || upcoming.length > 0 || topTopics.length > 0 || pastEpisodes.length > 0) && (
+  {(shows.length > 0 || upcoming.length > 0 || topTopics.length > 0 || pastEpisodes.length > 0) && (
     <section class="py-16 border-t border-base-300 text-center">
       <p class="font-mono text-xs text-signal mb-2">// join the show</p>
       <p class="text-lg md:text-xl font-bold max-w-xl mx-auto leading-snug">

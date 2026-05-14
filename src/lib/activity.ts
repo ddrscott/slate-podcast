@@ -38,6 +38,9 @@ export type ActivityKind =
   | 'slot_scheduled'
   | 'slot_unscheduled'
   | 'notes_published'
+  | 'show_created'        // a new show was added to the slate
+  | 'show_renamed'        // show's name was changed
+  | 'show_wiki_edited'    // show's wiki body saved
   | 'slate_renamed';
 
 export interface LogArgs {
@@ -270,6 +273,44 @@ export const Enqueue = {
     });
   },
 
+  // ── Show events ─────────────────────────────────────────────────────────
+  // show_id and show_name carried in meta — activity table doesn't have a
+  // dedicated show_id column today, but renderers can read from meta.
+
+  showCreated(ctx: APIContext, args: BaseArgs & { showId: string; showName: string }) {
+    return logActivity(ctx, {
+      kind: 'show_created',
+      slateId: args.slateId,
+      actorId: args.actorId,
+      meta: { show_id: args.showId, show_name: args.showName },
+    });
+  },
+
+  showRenamed(ctx: APIContext, args: BaseArgs & {
+    showId: string; from: string; to: string;
+  }) {
+    return logActivity(ctx, {
+      kind: 'show_renamed',
+      slateId: args.slateId,
+      actorId: args.actorId,
+      meta: { show_id: args.showId, from: args.from, to: args.to },
+    });
+  },
+
+  showWikiEdited(ctx: APIContext, args: BaseArgs & {
+    showId: string; changeSummary?: string;
+  }) {
+    return logActivity(ctx, {
+      kind: 'show_wiki_edited',
+      slateId: args.slateId,
+      actorId: args.actorId,
+      meta: {
+        show_id: args.showId,
+        ...(args.changeSummary ? { change_summary: args.changeSummary } : {}),
+      },
+    });
+  },
+
   slateRenamed(ctx: APIContext, args: BaseArgs & { from: string; to: string }) {
     return logActivity(ctx, {
       kind: 'slate_renamed',
@@ -468,6 +509,24 @@ const RENDERERS: Record<ActivityKind, (r: ActivityRow, ctx: RenderContext) => To
     name(actorName(r)),
     txt(' renamed the slate: '),
     { type: 'rename', from: String(r.meta.from ?? ''), to: String(r.meta.to ?? '') },
+  ],
+
+  show_created: (r) => [
+    name(actorName(r)),
+    txt(' added a new show: '),
+    name(String(r.meta?.show_name ?? '(unnamed)')),
+  ],
+
+  show_renamed: (r) => [
+    name(actorName(r)),
+    txt(' renamed a show: '),
+    { type: 'rename', from: String(r.meta?.from ?? ''), to: String(r.meta?.to ?? '') },
+  ],
+
+  show_wiki_edited: (r) => [
+    name(actorName(r)),
+    txt(' edited a show wiki'),
+    ...(r.meta?.change_summary ? [txt(` — ${r.meta.change_summary}`)] : []),
   ],
 };
 
