@@ -20,18 +20,18 @@ if (!slate) return new Response('Not found', { status: 404 });
 
 const isAdmin = isAppAdmin(user.scopes);
 const member = await db.prepare(
-  'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
-).bind(slate.id, user.id).first<{ role: string }>();
+  'SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?',
+).bind(slate.id, user.id).first<{ role: string; is_admin: number }>();
 if (!isAdmin && member?.role !== 'host') {
   return new Response('Host required', { status: 403 });
 }
 
 const members = await db.prepare(
-  `SELECT m.user_id, m.role, m.joined_at, m.promoted_at,
+  `SELECT m.user_id, m.role, m.is_admin, m.joined_at, m.promoted_at,
           u.email, u.display_name
    FROM slate_members m JOIN users u ON u.id = m.user_id
    WHERE m.slate_id = ?
-   ORDER BY (m.role = 'host') DESC, m.joined_at DESC`,
+   ORDER BY m.is_admin DESC, (m.role = 'host') DESC, m.joined_at DESC`,
 ).bind(slate.id).all<any>();
 ---
 
@@ -56,21 +56,31 @@ const members = await db.prepare(
       {members.results.length === 0 && <p class="opacity-60 text-sm">No one's joined yet.</p>}
       {members.results.map((m: any) => (
         <div class="card border border-base-300 bg-base-100">
-          <div class="card-body py-3 flex-row items-center gap-3">
-            <div class="flex-1">
+          <div class="card-body py-3 flex-row items-center gap-3 flex-wrap">
+            <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="font-semibold">{displayName(m)}</span>
-                <span class="text-xs opacity-50 font-mono">{m.email}</span>
+                <span class="text-xs opacity-50 font-mono truncate">{m.email}</span>
                 <span class={`badge badge-xs ${m.role === 'host' ? 'badge-primary' : 'badge-ghost'}`}>{m.role}</span>
+                {!!m.is_admin && <span class="badge badge-xs badge-warning">admin</span>}
               </div>
             </div>
             {m.role === 'member' && (
               <button data-uid={m.user_id} data-action="promote"
-                      class="member-action btn btn-xs btn-primary">promote</button>
+                      class="member-action btn btn-xs btn-primary">promote to host</button>
             )}
             {isAdmin && m.role === 'host' && (
               <button data-uid={m.user_id} data-action="demote"
                       class="member-action btn btn-xs btn-ghost border border-base-300 text-error">demote</button>
+            )}
+            {isAdmin && (
+              !!m.is_admin ? (
+                <button data-uid={m.user_id} data-action="revoke-admin"
+                        class="member-action btn btn-xs btn-ghost border border-base-300">revoke admin</button>
+              ) : (
+                <button data-uid={m.user_id} data-action="grant-admin"
+                        class="member-action btn btn-xs btn-ghost border border-base-300">grant admin</button>
+              )
             )}
           </div>
         </div>
@@ -83,14 +93,22 @@ const members = await db.prepare(
       b.addEventListener('click', async () => {
         const { uid, action } = b.dataset;
         b.disabled = true;
-        const res = action === 'promote'
-          ? await fetch(`/api/slates/${slateId}/hosts`, {
-              method: 'POST', headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ user_id: uid }),
-            })
-          : await fetch(`/api/slates/${slateId}/hosts/${uid}`, { method: 'DELETE' });
-        if (res.ok) location.reload();
-        else { b.disabled = false; alert((await res.json().catch(() => ({}))).error ?? res.status); }
+        let res;
+        if (action === 'promote') {
+          res = await fetch(`/api/slates/${slateId}/hosts`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ user_id: uid }),
+          });
+        } else if (action === 'demote') {
+          res = await fetch(`/api/slates/${slateId}/hosts/${uid}`, { method: 'DELETE' });
+        } else if (action === 'grant-admin' || action === 'revoke-admin') {
+          res = await fetch(`/api/slates/${slateId}/hosts/${uid}`, {
+            method: 'PATCH', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ is_admin: action === 'grant-admin' }),
+          });
+        }
+        if (res?.ok) location.reload();
+        else { b.disabled = false; alert((await res?.json().catch(() => ({})))?.error ?? res?.status); }
       });
     });
   </script>

@@ -22,8 +22,8 @@ const slate = await db.prepare(
 if (!slate) return new Response('Not found', { status: 404 });
 
 const member = await db.prepare(
-  'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
-).bind(slate.id, user.id).first<{ role: string }>();
+  'SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?',
+).bind(slate.id, user.id).first<{ role: string; is_admin: number }>();
 if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
   return new Response('Host required', { status: 403 });
 }

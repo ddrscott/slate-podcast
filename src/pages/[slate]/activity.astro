@@ -20,8 +20,8 @@ if (!slate) return new Response('Not found', { status: 404 });
 
 const isAdmin = isAppAdmin(user.scopes);
 const member = await db.prepare(
-  'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
-).bind(slate.id, user.id).first<{ role: string }>();
+  'SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?',
+).bind(slate.id, user.id).first<{ role: string; is_admin: number }>();
 if (!isAdmin && !member) return Astro.redirect(`/${slug}/join`);
 
 const seen = await db.prepare(

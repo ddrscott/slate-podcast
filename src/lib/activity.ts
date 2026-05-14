@@ -29,6 +29,8 @@ export type ActivityKind =
   | 'host_demoted'
   | 'host_substituted'    // one Host took over a slot from another
   | 'host_profile_edited' // host saved an edit to their wiki page
+  | 'slate_admin_granted' // App Admin flipped is_admin=1 on a member
+  | 'slate_admin_revoked' // App Admin flipped is_admin=0 on a member
   | 'topic_posted'
   | 'topic_archived'
   | 'topic_notes_edited'  // member/host saved an edit to a topic's notes
@@ -161,6 +163,26 @@ export const Enqueue = {
       actorId: args.actorId,
       targetUserId: args.targetUserId,
       meta: args.changeSummary ? { change_summary: args.changeSummary } : undefined,
+    });
+  },
+
+  // App Admin flipped is_admin on a slate_members row. Two kinds rather
+  // than one with a sign so the activity feed reads naturally.
+  slateAdminGranted(ctx: APIContext, args: BaseArgs & { targetUserId: string }) {
+    return logActivity(ctx, {
+      kind: 'slate_admin_granted',
+      slateId: args.slateId,
+      actorId: args.actorId,
+      targetUserId: args.targetUserId,
+    });
+  },
+
+  slateAdminRevoked(ctx: APIContext, args: BaseArgs & { targetUserId: string }) {
+    return logActivity(ctx, {
+      kind: 'slate_admin_revoked',
+      slateId: args.slateId,
+      actorId: args.actorId,
+      targetUserId: args.targetUserId,
     });
   },
 
@@ -369,6 +391,18 @@ const RENDERERS: Record<ActivityKind, (r: ActivityRow, ctx: RenderContext) => To
     txt(' edited notes on '),
     ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : [txt('a topic')]),
     ...(r.meta?.change_summary ? [txt(` — ${r.meta.change_summary}`)] : []),
+  ],
+
+  slate_admin_granted: (r) => [
+    name(targetName(r)),
+    txt(' was granted slate admin by '),
+    name(actorName(r), 'secondary'),
+  ],
+
+  slate_admin_revoked: (r) => [
+    name(targetName(r)),
+    txt(' had slate admin revoked by '),
+    name(actorName(r), 'secondary'),
   ],
 
   host_profile_edited: (r) => {

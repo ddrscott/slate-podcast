@@ -47,10 +47,10 @@ const endMs = startMs + slot.duration_minutes * 60_000;
 
 const user = Astro.locals.user;
 const member = user ? await db.prepare(
-  `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
-).bind(slate.id, user.id).first<{ role: string }>() : null;
+  `SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string; is_admin: number }>() : null;
 
-const isHost = (member?.role === 'host') || isAppAdmin(user?.scopes);
+const isHost = ((member?.role === 'host' || !!member?.is_admin)) || isAppAdmin(user?.scopes);
 const isSlotOwner = user && slot.host_id === user.id;
 const canEditNotes = isSlotOwner || isHost;
 const canPublish = isHost;

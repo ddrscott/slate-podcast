@@ -29,10 +29,10 @@ const signInHref = signInUrl(env, reqUrl.origin, `/${slug}/topics`);
 
 const isAdmin = isAppAdmin(user?.scopes);
 const member = user ? await db.prepare(
-  'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
-).bind(slate.id, user.id).first<{ role: string }>() : null;
+  'SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?',
+).bind(slate.id, user.id).first<{ role: string; is_admin: number }>() : null;
 const isMember = !!member;
-const isHost = isAdmin || member?.role === 'host';
+const isHost = isAdmin || (member?.role === 'host' || !!member?.is_admin);
 
 const status = reqUrl.searchParams.get('status') ?? 'open';
 

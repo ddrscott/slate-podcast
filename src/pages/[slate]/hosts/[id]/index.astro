@@ -49,10 +49,10 @@ const isOwner = !!user && user.id === host.id;
 const canEdit = isOwner || isAdmin;
 
 const member = user ? await db.prepare(
-  `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
-).bind(slate.id, user.id).first<{ role: string }>() : null;
+  `SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string; is_admin: number }>() : null;
 const isMember = !!member;
-const isHost = member?.role === 'host' || isAdmin;
+const isHost = (member?.role === 'host' || !!member?.is_admin) || isAdmin;
 
 const env = getEnv(Astro);
 const reqUrl = new URL(Astro.request.url);

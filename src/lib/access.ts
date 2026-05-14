@@ -16,16 +16,55 @@ export function requireAppAdmin(ctx: APIContext): ResolvedUser {
   return user;
 }
 
-// Host on the slate, OR App Admin (App Admins implicitly have Host rights everywhere).
+// Host on the slate, OR slate admin (is_admin=1) on the slate, OR App Admin.
+// Slate admins inherit host-level privileges so a community manager can
+// act on behalf of hosts (configure the slate, upload artwork, claim
+// slots, etc.) even if they don't run a show themselves.
 export async function requireHostOnSlate(ctx: APIContext, slateId: string): Promise<void> {
   const user = requireUser(ctx);
   if (isAppAdmin(user.scopes)) return;
 
   const db = getDb(ctx);
   const row = await db.prepare(
-    `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ? AND role = 'host'`,
+    `SELECT role FROM slate_members
+     WHERE slate_id = ? AND user_id = ? AND (role = 'host' OR is_admin = 1)`,
   ).bind(slateId, user.id).first();
   if (!row) throw new HttpError(403, 'host_required');
+}
+
+// Slate admin on the slate (is_admin=1), OR App Admin. Distinct from the
+// host check above — used when an operation needs admin authority that
+// a plain host shouldn't have (currently: editing other hosts' show
+// identity / wiki / show logo).
+export async function requireSlateAdminOnSlate(ctx: APIContext, slateId: string): Promise<void> {
+  const user = requireUser(ctx);
+  if (isAppAdmin(user.scopes)) return;
+
+  const db = getDb(ctx);
+  const row = await db.prepare(
+    `SELECT 1 FROM slate_members WHERE slate_id = ? AND user_id = ? AND is_admin = 1`,
+  ).bind(slateId, user.id).first();
+  if (!row) throw new HttpError(403, 'slate_admin_required');
+}
+
+// "Can edit this host's stuff" — the auth shape used by the three
+// host-profile endpoints (show_name PATCH, show-logo upload, profile
+// wiki). Allows: the host themselves editing their own, OR a slate
+// admin on the same slate, OR an App Admin anywhere.
+export async function requireCanEditHostOnSlate(
+  ctx: APIContext,
+  slateId: string,
+  targetUserId: string,
+): Promise<void> {
+  const user = requireUser(ctx);
+  if (user.id === targetUserId) return;        // self always ok
+  if (isAppAdmin(user.scopes)) return;          // global override
+
+  const db = getDb(ctx);
+  const row = await db.prepare(
+    `SELECT 1 FROM slate_members WHERE slate_id = ? AND user_id = ? AND is_admin = 1`,
+  ).bind(slateId, user.id).first();
+  if (!row) throw new HttpError(403, 'cannot_edit_host');
 }
 
 // Member or Host on the slate, OR App Admin.

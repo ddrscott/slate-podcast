@@ -1,7 +1,6 @@
 import type { APIRoute } from 'astro';
 import { getDb, now, randomId } from '@/lib/db';
-import { HttpError, jsonError, jsonOk, requireUser } from '@/lib/access';
-import { isAppAdmin } from '@/lib/auth';
+import { HttpError, jsonError, jsonOk, requireCanEditHostOnSlate, requireUser } from '@/lib/access';
 import { Enqueue } from '@/lib/activity';
 
 export const prerender = false;
@@ -10,8 +9,9 @@ export const prerender = false;
 // last-write-wins on slate_members.profile_body, every save also writes
 // a slate_member_revisions row for attribution + history.
 //
-// Access: the host editing their own page, OR an App Admin editing
-// anyone's. Same auth rule as the show_name PATCH and show-logo endpoints.
+// Access: the host editing their own page, OR a slate admin on the
+// slate, OR an App Admin (see requireCanEditHostOnSlate). Same auth rule
+// as the show_name PATCH and show-logo endpoints.
 //
 // Body: { body: string, change_summary?: string }
 //   body            — required, markdown, ≤ 100_000 chars
@@ -26,9 +26,7 @@ async function resolveTarget(ctx: Parameters<APIRoute>[0]) {
   let targetUserId = ctx.params.user_id!;
   if (targetUserId === 'me') targetUserId = caller.id;
 
-  if (targetUserId !== caller.id && !isAppAdmin(caller.scopes)) {
-    throw new HttpError(403, 'not_self_and_not_app_admin');
-  }
+  await requireCanEditHostOnSlate(ctx, slateId, targetUserId);
 
   const db = getDb(ctx);
   const member = await db.prepare(

@@ -18,8 +18,8 @@ if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/topics/new`));
 
 if (!isAppAdmin(user.scopes)) {
   const m = await db.prepare(
-    'SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?',
-  ).bind(slate.id, user.id).first<{ role: string }>();
+    'SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?',
+  ).bind(slate.id, user.id).first<{ role: string; is_admin: number }>();
   if (!m) return Astro.redirect(`/${slug}/join`);
 }
 ---

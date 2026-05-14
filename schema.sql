@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS slate_members (
   slate_id TEXT NOT NULL REFERENCES slates(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK (role IN ('member','host')),
+  is_admin INTEGER NOT NULL DEFAULT 0,
   joined_at INTEGER NOT NULL,
   promoted_at INTEGER,
   promoted_by TEXT REFERENCES users(id),

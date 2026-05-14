@@ -54,10 +54,10 @@ if (!topic) return new Response('Not found', { status: 404 });
 
 const user = Astro.locals.user;
 const member = user ? await db.prepare(
-  `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
-).bind(slate.id, user.id).first<{ role: string }>() : null;
+  `SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string; is_admin: number }>() : null;
 const isMember = !!member;
-const isHost = member?.role === 'host' || isAppAdmin(user?.scopes);
+const isHost = (member?.role === 'host' || !!member?.is_admin) || isAppAdmin(user?.scopes);
 const isAdmin = isAppAdmin(user?.scopes);
 const canEdit = isMember || isAdmin;
 

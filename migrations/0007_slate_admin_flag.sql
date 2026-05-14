@@ -1,0 +1,24 @@
+-- 0007_slate_admin_flag.sql
+--
+-- Per-slate admin role, expressed as a boolean flag rather than a
+-- third role enum value. Composes with role rather than replacing it
+-- — a host who's also an admin keeps their host status (and shows up
+-- in the marquee hosts grid, owns slots, etc.); a non-host admin
+-- (e.g. community manager) is also expressible as role='member'
+-- is_admin=1.
+--
+-- A slate admin can:
+--   - edit any host's show_name, show_logo_url, profile_body (wiki)
+--   - do anything a host can do on this slate (claim slots, configure
+--     the slate, upload artwork/cover, etc.)
+-- A slate admin cannot:
+--   - promote/demote membership roles or grant/revoke admin (App
+--     Admin only — keeps the chain-of-trust narrow)
+--
+-- D1 quirk reminder: no BEGIN/COMMIT/PRAGMA in `wrangler d1 execute
+-- --file`. The ADD COLUMN runs as its own implicit transaction.
+--
+-- Apply remotely:
+--   wrangler d1 execute slate-podcast --remote --file=./migrations/0007_slate_admin_flag.sql
+
+ALTER TABLE slate_members ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;

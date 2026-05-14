@@ -1,7 +1,6 @@
 import type { APIRoute } from 'astro';
 import { getDb } from '@/lib/db';
-import { HttpError, jsonError, jsonOk, requireUser } from '@/lib/access';
-import { isAppAdmin } from '@/lib/auth';
+import { HttpError, jsonError, jsonOk, requireCanEditHostOnSlate, requireUser } from '@/lib/access';
 import { deleteImage, putImage, validateImage } from '@/lib/uploads';
 
 export const prerender = false;
@@ -9,8 +8,9 @@ export const prerender = false;
 // Square show logo for a host on a slate. Modeled on
 // /api/slates/[id]/cover and /api/me/headshot.
 //
-// Access: the host themselves editing their own logo, OR an App Admin
-// editing anyone's. Same auth rule as the show_name PATCH next door.
+// Access: the host themselves, OR a slate admin on the slate, OR an
+// App Admin (see requireCanEditHostOnSlate). Same auth rule as the
+// show_name PATCH and the profile-body POST next door.
 
 async function resolveTarget(ctx: Parameters<APIRoute>[0]) {
   const caller = requireUser(ctx);
@@ -18,9 +18,7 @@ async function resolveTarget(ctx: Parameters<APIRoute>[0]) {
   let targetUserId = ctx.params.user_id!;
   if (targetUserId === 'me') targetUserId = caller.id;
 
-  if (targetUserId !== caller.id && !isAppAdmin(caller.scopes)) {
-    throw new HttpError(403, 'not_self_and_not_app_admin');
-  }
+  await requireCanEditHostOnSlate(ctx, slateId, targetUserId);
 
   const db = getDb(ctx);
   const member = await db.prepare(

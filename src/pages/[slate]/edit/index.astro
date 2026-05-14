@@ -38,10 +38,10 @@ if (!user) {
 }
 
 const member = await db.prepare(
-  `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
-).bind(slate.id, user.id).first<{ role: string }>();
+  `SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string; is_admin: number }>();
 const isMember = !!member;
-const isHost = member?.role === 'host' || isAppAdmin(user.scopes);
+const isHost = (member?.role === 'host' || !!member?.is_admin) || isAppAdmin(user.scopes);
 const isAdmin = isAppAdmin(user.scopes);
 
 // Signed-in non-member → land on the public marquee (where the join

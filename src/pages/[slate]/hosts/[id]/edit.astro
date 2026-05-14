@@ -50,10 +50,10 @@ if (!isOwner && !isAdmin) {
 }
 
 const member = await db.prepare(
-  `SELECT role FROM slate_members WHERE slate_id = ? AND user_id = ?`,
-).bind(slate.id, user.id).first<{ role: string }>();
+  `SELECT role, is_admin FROM slate_members WHERE slate_id = ? AND user_id = ?`,
+).bind(slate.id, user.id).first<{ role: string; is_admin: number }>();
 const isMember = !!member;
-const isHost = member?.role === 'host' || isAdmin;
+const isHost = (member?.role === 'host' || !!member?.is_admin) || isAdmin;
 
 const personName = displayName({ display_name: host.display_name, email: host.email });
 const pageTitle = host.show_name ?? personName;
