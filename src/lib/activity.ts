@@ -400,8 +400,20 @@ const targetName = (r: ActivityRow): string =>
 const txt = (value: string): Token => ({ type: 'text', value });
 const name = (value: string, opacity?: 'primary' | 'secondary'): Token =>
   ({ type: 'name', value, opacity });
-const topicLink = (slug: string, title: string): Token =>
-  ({ type: 'topic', href: `/${slug}/topics`, title });
+// Topic links point at the topic's detail page (`/[slate]/topics/[id]`),
+// not the parent list page. Pass `commentAnchor` for events whose target
+// is a specific comment within the topic's discussion thread — it appends
+// `#cmt_<id>` so the browser scrolls straight to the comment on load.
+const topicLink = (
+  slug: string,
+  topicId: string,
+  title: string,
+  commentAnchor?: string | null,
+): Token => ({
+  type: 'topic',
+  href: `/${slug}/topics/${topicId}${commentAnchor ? `#${commentAnchor}` : ''}`,
+  title,
+});
 const slotLink = (slug: string, slotId: string, label: string): Token =>
   ({ type: 'slot', href: `/${slug}/slot/${slotId}`, label });
 
@@ -413,9 +425,9 @@ function topicAndSlot(
   joinSlot: string,
 ): Token[] {
   const out: Token[] = [];
-  if (r.topic_title) {
+  if (r.topic_title && r.topic_id) {
     out.push(txt(joinTopic));
-    out.push(topicLink(ctx.slug, r.topic_title));
+    out.push(topicLink(ctx.slug, r.topic_id, r.topic_title));
   }
   if (r.slot_start && r.slot_id) {
     out.push(txt(joinSlot));
@@ -452,19 +464,21 @@ const RENDERERS: Record<ActivityKind, (r: ActivityRow, ctx: RenderContext) => To
   topic_posted: (r, ctx) => [
     name(actorName(r)),
     txt(' suggested '),
-    ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : []),
+    ...(r.topic_title && r.topic_id ? [topicLink(ctx.slug, r.topic_id, r.topic_title)] : []),
   ],
 
   topic_archived: (r, ctx) => [
     name(actorName(r)),
     txt(' archived '),
-    ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : []),
+    ...(r.topic_title && r.topic_id ? [topicLink(ctx.slug, r.topic_id, r.topic_title)] : []),
   ],
 
   topic_notes_edited: (r, ctx) => [
     name(actorName(r)),
     txt(' edited notes on '),
-    ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : [txt('a topic')]),
+    ...(r.topic_title && r.topic_id
+      ? [topicLink(ctx.slug, r.topic_id, r.topic_title)]
+      : [txt('a topic')]),
     ...(r.meta?.change_summary ? [txt(` — ${r.meta.change_summary}`)] : []),
   ],
 
@@ -515,7 +529,7 @@ const RENDERERS: Record<ActivityKind, (r: ActivityRow, ctx: RenderContext) => To
   slot_scheduled: (r, ctx) => [
     name(actorName(r)),
     txt(r.meta.replaced_topic_id ? ' switched the topic to ' : ' scheduled '),
-    ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : []),
+    ...(r.topic_title && r.topic_id ? [topicLink(ctx.slug, r.topic_id, r.topic_title)] : []),
     ...(r.slot_start && r.slot_id ? [
       txt(' for '),
       slotLink(ctx.slug, r.slot_id, ctx.fmtSlotTime(r.slot_start)),
@@ -571,11 +585,19 @@ const RENDERERS: Record<ActivityKind, (r: ActivityRow, ctx: RenderContext) => To
     name(String(r.meta?.show_name ?? 'a show')),
   ],
 
-  topic_commented: (r, ctx) => [
-    name(actorName(r)),
-    txt(r.meta?.is_reply ? ' replied on ' : ' commented on '),
-    ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : [txt('a topic')]),
-  ],
+  topic_commented: (r, ctx) => {
+    const commentId = typeof r.meta?.comment_id === 'string' ? r.meta.comment_id : null;
+    // The activity row stores the bare id (e.g., "cmt_abc123"); the in-page
+    // anchor on each comment is the same string. Just pass it through.
+    const anchor = commentId || null;
+    return [
+      name(actorName(r)),
+      txt(r.meta?.is_reply ? ' replied on ' : ' commented on '),
+      ...(r.topic_title && r.topic_id
+        ? [topicLink(ctx.slug, r.topic_id, r.topic_title, anchor)]
+        : [txt('a topic')]),
+    ];
+  },
 };
 
 export function renderActivity(r: ActivityRow, ctx: RenderContext): Token[] {
