@@ -74,15 +74,27 @@ const upcoming = await db.prepare(
    ORDER BY sl.start_time LIMIT 8`,
 ).bind(show.id).all<{ id: string; start_time: number; status: string; title: string | null }>();
 
+// Past episodes — anything that was at least claimed. We deliberately
+// include 'assigned' and 'confirmed' (not just 'recorded' / 'published')
+// because most hosts never manually flip the status after recording,
+// so requiring 'recorded' here makes the section look empty even when
+// real episodes have aired. 'open' (nobody claimed, time passed) and
+// 'cancelled' stay excluded — those aren't episodes that happened.
 const past = await db.prepare(
   `SELECT sl.id, sl.start_time, sl.status,
-          COALESCE(sl.custom_title, sug.title) AS title
+          COALESCE(sl.custom_title, sug.title) AS title,
+          u.display_name AS host_display_name,
+          u.email        AS host_email
    FROM slots sl
    LEFT JOIN topics sug ON sug.id = sl.topic_id
+   LEFT JOIN users u    ON u.id  = sl.host_id
    WHERE sl.show_id = ? AND sl.start_time < unixepoch()
-     AND sl.status IN ('recorded','published')
-   ORDER BY sl.start_time DESC LIMIT 12`,
-).bind(show.id).all<{ id: string; start_time: number; status: string; title: string | null }>();
+     AND sl.status NOT IN ('cancelled', 'open')
+   ORDER BY sl.start_time DESC LIMIT 50`,
+).bind(show.id).all<{
+  id: string; start_time: number; status: string; title: string | null;
+  host_display_name: string | null; host_email: string | null;
+}>();
 
 const revisions = await db.prepare(
   `SELECT r.id, r.change_summary, r.created_at,
@@ -226,26 +238,41 @@ const fmtRevision = new Intl.DateTimeFormat('en-US', {
     {/* Past episodes */}
     {past.results.length > 0 && (
       <section class="mt-10 border-t border-base-300 pt-8">
-        <h2 class="text-xl md:text-2xl font-bold mb-4">Past episodes</h2>
+        <header class="flex items-baseline justify-between mb-4">
+          <h2 class="text-xl md:text-2xl font-bold">Past episodes</h2>
+          <span class="font-mono text-xs opacity-50">
+            {past.results.length}{past.results.length === 50 ? '+' : ''}
+          </span>
+        </header>
         <ul class="divide-y divide-base-300/50">
-          {past.results.map(e => (
-            <li>
-              <a href={`/${slate.slug}/slot/${e.id}`}
-                 class="block py-3 hover:bg-base-200/40 -mx-2 px-2 rounded transition-colors">
-                <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span class="font-mono text-xs opacity-60 w-24 shrink-0 tabular-nums">
-                    {fmtPast.format(new Date(e.start_time * 1000))}
-                  </span>
-                  <span class="font-medium flex-1 min-w-0 truncate">
-                    {e.title ?? <span class="opacity-50 italic font-normal">Untitled</span>}
-                  </span>
-                  <span class={`badge badge-sm ${
-                    e.status === 'published' ? 'badge-primary' : 'badge-ghost'
-                  }`}>{e.status}</span>
-                </div>
-              </a>
-            </li>
-          ))}
+          {past.results.map(e => {
+            const hostLabel = e.host_email
+              ? displayName({ display_name: e.host_display_name, email: e.host_email })
+              : null;
+            return (
+              <li>
+                <a href={`/${slate.slug}/slot/${e.id}`}
+                   class="block py-3 hover:bg-base-200/40 -mx-2 px-2 rounded transition-colors">
+                  <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span class="font-mono text-xs opacity-60 w-24 shrink-0 tabular-nums">
+                      {fmtPast.format(new Date(e.start_time * 1000))}
+                    </span>
+                    <span class="font-medium flex-1 min-w-0 truncate">
+                      {e.title ?? <span class="opacity-50 italic font-normal">Untitled</span>}
+                    </span>
+                    {hostLabel && (
+                      <span class="font-mono text-xs opacity-60 shrink-0">{hostLabel}</span>
+                    )}
+                    <span class={`badge badge-sm ${
+                      e.status === 'published' ? 'badge-primary'
+                        : e.status === 'recorded' ? 'badge-ghost'
+                        : 'badge-outline opacity-60'
+                    }`}>{e.status}</span>
+                  </div>
+                </a>
+              </li>
+            );
+          })}
         </ul>
       </section>
     )}
