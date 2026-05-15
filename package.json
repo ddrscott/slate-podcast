@@ -1,6 +1,6 @@
 {
   "name": "slate-podcast",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Slate — multi-tenant podcast slot manager with Member/Host/App-Admin roles",
