@@ -19,10 +19,10 @@ if (!slug) return new Response('Not found', { status: 404 });
 
 const db = getDb(Astro);
 const slate = await db.prepare(
-  `SELECT id, slug, name, description, timezone, is_public FROM slates WHERE slug = ?`,
+  `SELECT id, slug, name, description, timezone, is_public, artwork_image_url FROM slates WHERE slug = ?`,
 ).bind(slug).first<{
   id: string; slug: string; name: string; description: string | null;
-  timezone: string; is_public: number;
+  timezone: string; is_public: number; artwork_image_url: string | null
 }>();
 
 if (!slate) return new Response('Not found', { status: 404 });
@@ -87,10 +87,17 @@ const topics = await db.prepare(
           sl.host_id AS scheduled_host_id,
           spk.email AS scheduled_host_email,
           spk.display_name AS scheduled_host_display_name,
-          (SELECT 1 FROM topic_votes v WHERE v.topic_id = s.id AND v.user_id = ?) AS has_voted
+          (SELECT 1 FROM topic_votes v WHERE v.topic_id = s.id AND v.user_id = ?) AS has_voted,
+          COALESCE(cc.n, 0) AS comment_count
    FROM topics s
    LEFT JOIN slots sl ON sl.id = s.scheduled_slot_id
    LEFT JOIN users spk ON spk.id = sl.host_id
+   LEFT JOIN (
+     SELECT topic_id, COUNT(*) AS n
+     FROM comments
+     WHERE deleted_at IS NULL
+     GROUP BY topic_id
+   ) cc ON cc.topic_id = s.id
    WHERE s.slate_id = ? AND s.status IN ('open','scheduled')
    ORDER BY (s.status = 'open') DESC, s.upvote_count DESC, s.submitted_at DESC`,
 ).bind(user.id, slate.id).all<{
@@ -101,6 +108,7 @@ const topics = await db.prepare(
   scheduled_host_id: string | null;
   scheduled_host_email: string | null;
   scheduled_host_display_name: string | null;
+  comment_count: number;
 }>();
 
 const openCount = topics.results.filter(s => s.status === 'open').length;
@@ -126,7 +134,7 @@ const unreadActivity = row?.n ?? 0;
 <Layout
   title={`${slate.name} · dashboard`}
   description={slate.description ?? undefined}
-  slate={{ name: slate.name, slug: slate.slug }}
+  slate={{ name: slate.name, slug: slate.slug, artwork_image_url: slate.artwork_image_url }}
   slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null, unreadActivity }}
 >
   <EditSubnav slug={slate.slug} isHost={isHost} current="topics" />
@@ -173,6 +181,7 @@ const unreadActivity = row?.n ?? 0;
             {topics.results.map(s => (
               <TopicCard
                 s={s}
+                slateSlug={slate.slug}
                 isMember={isMember}
                 isHost={isHost}
                 currentUserId={user.id}

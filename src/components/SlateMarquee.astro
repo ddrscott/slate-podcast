@@ -9,19 +9,6 @@
 
 import { displayName } from '@/lib/people';
 
-interface Show {
-  id: string;
-  slug: string;
-  name: string;
-  description: string | null;
-  cover_image_url: string | null;
-  host_id: string | null;
-  host_display_name: string | null;
-  host_email: string | null;
-  host_headshot_url: string | null;
-  episode_count: number;
-}
-
 interface UpcomingSlot {
   id: string;
   start_time: number;
@@ -41,6 +28,7 @@ interface TopTopic {
   id: string;
   title: string;
   upvote_count: number;
+  comment_count: number;
 }
 
 interface PastEpisode {
@@ -70,9 +58,11 @@ export interface MarqueeSlate {
 
 interface Props {
   slate: MarqueeSlate;
-  shows: Show[];
   upcoming: UpcomingSlot[];
   topTopics: TopTopic[];
+  // Total count of open-unscheduled topics (≥ topTopics.length). Used for
+  // the "see all (N) →" affordance at the bottom of the topic pool.
+  totalTopicCount: number;
   pastEpisodes: PastEpisode[];
   signInHref: string;
   isSignedIn: boolean;
@@ -80,14 +70,18 @@ interface Props {
   isHost: boolean;
 }
 
-const { slate, shows, upcoming, topTopics, pastEpisodes, signInHref, isSignedIn, isMember, isHost } = Astro.props;
+const { slate, upcoming, topTopics, totalTopicCount, pastEpisodes, signInHref, isSignedIn, isMember, isHost } = Astro.props;
 
 const fmtUpcoming = new Intl.DateTimeFormat('en-US', {
   timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
 });
 const fmtUpcomingTime = new Intl.DateTimeFormat('en-US', {
-  timeZone: slate.timezone, hour: 'numeric', minute: '2-digit',
+  timeZone: slate.timezone, hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
 });
+
+// ISO 8601 (UTC, ms-precision) — fed to the inline localize script in
+// Layout.astro so the time gets reformatted in the viewer's own tz.
+const isoFor = (epochSec: number) => new Date(epochSec * 1000).toISOString();
 const fmtPast = new Intl.DateTimeFormat('en-US', {
   timeZone: slate.timezone, month: 'short', day: 'numeric', year: 'numeric',
 });
@@ -95,7 +89,6 @@ const fmtPast = new Intl.DateTimeFormat('en-US', {
 const hostNameOrFallback = (display: string | null, email: string | null) =>
   email ? displayName({ display_name: display, email }) : '(unassigned)';
 
-const showCount = shows.length;
 const episodeCount = pastEpisodes.length;
 
 // Primary CTA depends on viewer relationship to the slate:
@@ -129,245 +122,205 @@ if (isMember || isHost) {
       cue is the logo + name in the nav. */}
   <h1 class="sr-only">{slate.name}</h1>
 
-  {/* ─── Next-show hero ──────────────────────────────────────────────── */}
-  {/* This is THE moment for a listener. Big art on the left, big date/
-      title/host on the right. The slate's brand (logo + name) is in
-      the Layout nav; this card is the first content block on the
-      marquee and sells the next episode. */}
-  {upcoming.length > 0 && (
+  {/* ─── Next-show hero + Topic Pool ──────────────────────────────────── */}
+  {/* Two columns at lg+: "// next up" on the left, "// topic pool" on
+      the right. The featured episode card no longer hogs the full
+      viewport with empty space — the topic list fills the right side
+      while the upcoming-grid + featured card stack in the left column.
+      Mobile/tablet: stacked. */}
+  {(upcoming.length > 0 || topTopics.length > 0) && (
     <section class="py-10 md:py-14">
-      <p class="font-mono text-xs text-signal mb-3">// next up · {slate.timezone}</p>
-      {(() => {
-        const s = upcoming[0];
-        const date = new Date(s.start_time * 1000);
-        const dateStr = fmtUpcoming.format(date);
-        const timeStr = fmtUpcomingTime.format(date);
-        const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
-        // Render precedence: per-slot promo > show cover > slate artwork.
-        const tileArt = s.promo_image_url ?? s.show_cover ?? slate.artwork_image_url;
-        const showName = s.show_name;
-        const href = s.topic_id ? `/${slate.slug}/topics/${s.topic_id}` : `/${slate.slug}/slot/${s.id}`;
-        return (
-          <a href={href}
-             class="group block rounded-lg border border-base-300 hover:border-signal transition-colors overflow-hidden shadow-sm hover:shadow-md">
-            {/* Always horizontal, but the column ratio + paddings + type
-                scale upward at md+ so the lead card still reads as
-                "featured" on desktop without dominating the viewport
-                on mobile. */}
-            <div class="grid grid-cols-[112px_minmax(0,1fr)] sm:grid-cols-[160px_minmax(0,1fr)] md:grid-cols-[minmax(0,2fr)_3fr] gap-0">
-              {tileArt ? (
-                <div class="aspect-square overflow-hidden bg-black border-r border-base-300">
-                  <img src={tileArt} alt="" class="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-700" />
-                </div>
-              ) : (
-                <div class="bg-gradient-to-br from-signal/15 to-base-200 border-r border-base-300"></div>
-              )}
-              <div class="p-3 sm:p-5 md:p-10 lg:p-12 flex flex-col justify-center min-w-0">
-                <div class="flex items-baseline gap-2 sm:gap-3 font-mono text-xs sm:text-sm md:text-base">
-                  <span class="text-signal font-bold">{dateStr}</span>
-                  <span class="opacity-50">·</span>
-                  <span class="opacity-70">{timeStr}</span>
-                </div>
-                <h2 class="mt-2 md:mt-4 text-base sm:text-xl md:text-4xl lg:text-5xl font-bold leading-tight md:leading-[1.1] tracking-tight line-clamp-3">
-                  {s.title ?? <span class="opacity-50 italic font-normal">No topic yet</span>}
-                </h2>
-                {hostLabel && (
-                  <div class="mt-2 md:mt-5 flex items-center gap-2 md:gap-3 text-xs sm:text-sm md:text-base min-w-0">
-                    {s.host_headshot_url ? (
-                      <img src={s.host_headshot_url} alt="" class="w-5 h-5 md:w-9 md:h-9 rounded-full object-cover shrink-0" />
-                    ) : (
-                      <span class="w-5 h-5 md:w-9 md:h-9 rounded-full bg-base-200 border border-base-300 flex items-center justify-center font-mono text-[10px] md:text-sm opacity-60 shrink-0">
-                        {hostLabel.charAt(0).toUpperCase()}
-                      </span>
-                    )}
-                    {showName ? (
-                      <span class="opacity-80 truncate">
-                        <span class="font-semibold">{showName}</span>
-                        <span class="opacity-60 hidden sm:inline"> · {hostLabel}</span>
-                      </span>
-                    ) : (
-                      <span class="opacity-80 truncate">with <span class="font-semibold">{hostLabel}</span></span>
-                    )}
-                  </div>
-                )}
-                <p class="mt-2 md:mt-6 font-mono text-[10px] sm:text-xs text-signal opacity-50 group-hover:opacity-100 transition-opacity">
-                  Open this episode →
-                </p>
-              </div>
-            </div>
-          </a>
-        );
-      })()}
-
-      {/* Remaining upcoming slots — secondary grid.
-          Mobile: horizontal card (thumb left, info right) — keeps each
-          tile compact so the user can scan multiple at once instead of
-          one full-screen card per scroll.
-          sm+: vertical card with aspect-square art on top, since they
-          live in a multi-column grid where the vertical shape works. */}
-      {upcoming.length > 1 && (
-        <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mt-4 sm:mt-6">
-          {upcoming.slice(1).map(s => {
-            const date = new Date(s.start_time * 1000);
-            const dateStr = fmtUpcoming.format(date);
-            const timeStr = fmtUpcomingTime.format(date);
-            const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
-            const tileArt = s.promo_image_url ?? s.show_cover ?? slate.artwork_image_url;
-            const showName = s.show_name;
-            const href = s.topic_id ? `/${slate.slug}/topics/${s.topic_id}` : `/${slate.slug}/slot/${s.id}`;
-            return (
-              <li>
+      <div class={`grid grid-cols-1 gap-10 lg:gap-12 ${upcoming.length > 0 && topTopics.length > 0 ? 'lg:grid-cols-5' : ''}`}>
+        {upcoming.length > 0 && (
+          <div class={`min-w-0 ${topTopics.length > 0 ? 'lg:col-span-2' : ''}`}>
+            <p class="font-mono text-xs text-signal mb-3">// next up</p>
+            {(() => {
+              const s = upcoming[0];
+              const date = new Date(s.start_time * 1000);
+              const dateStr = fmtUpcoming.format(date);
+              const timeStr = fmtUpcomingTime.format(date);
+              const iso = isoFor(s.start_time);
+              const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
+              const tileArt = s.promo_image_url ?? s.show_cover ?? slate.artwork_image_url;
+              const showName = s.show_name;
+              const href = s.topic_id ? `/${slate.slug}/topics/${s.topic_id}` : `/${slate.slug}/slot/${s.id}`;
+              return (
                 <a href={href}
-                   class="block rounded border border-base-300 hover:border-signal transition-colors h-full overflow-hidden">
-                  <div class="grid grid-cols-[88px_minmax(0,1fr)] sm:grid-cols-1 gap-0">
+                   class="group block rounded-lg border border-base-300 hover:border-signal transition-colors overflow-hidden shadow-sm hover:shadow-md">
+                  {/* Horizontal at every breakpoint. Type/padding scale
+                      back at lg+ since the card now lives in a half-
+                      width column next to the topic pool, not full
+                      viewport. */}
+                  <div class="grid grid-cols-[112px_minmax(0,1fr)] sm:grid-cols-[160px_minmax(0,1fr)] md:grid-cols-[minmax(0,2fr)_3fr] gap-0">
                     {tileArt ? (
-                      <div class="aspect-square overflow-hidden border-r sm:border-r-0 sm:border-b border-base-300 bg-black">
-                        <img src={tileArt} alt="" class="w-full h-full object-contain" />
+                      <div class="aspect-square overflow-hidden bg-black border-r border-base-300">
+                        <img src={tileArt} alt="" class="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-700" />
                       </div>
                     ) : (
-                      <div class="aspect-square bg-gradient-to-br from-signal/10 to-base-200 border-r sm:border-r-0 sm:border-b border-base-300"></div>
+                      <div class="bg-gradient-to-br from-signal/15 to-base-200 border-r border-base-300"></div>
                     )}
-                    <div class="p-3 sm:p-5 min-w-0">
-                      <div class="flex items-baseline justify-between gap-2 font-mono text-xs">
-                        <span class="text-signal truncate">{dateStr}</span>
-                        <span class="opacity-60 shrink-0">{timeStr}</span>
+                    <div class="p-3 sm:p-5 md:p-8 lg:p-4 xl:p-6 flex flex-col justify-center min-w-0">
+                      <div class="flex items-baseline gap-2 sm:gap-3 font-mono text-xs sm:text-sm">
+                        <time datetime={iso} data-localize="date" class="text-signal font-bold">{dateStr}</time>
+                        <span class="opacity-50">·</span>
+                        <time datetime={iso} data-localize="time-tz" class="opacity-70">{timeStr}</time>
                       </div>
-                      <div class="mt-2 sm:mt-3 font-semibold leading-snug line-clamp-3 text-sm sm:text-base">
+                      <h2 class="mt-2 md:mt-3 lg:mt-2 text-base sm:text-xl md:text-3xl lg:text-xl xl:text-2xl font-bold leading-tight md:leading-[1.15] tracking-tight line-clamp-3">
                         {s.title ?? <span class="opacity-50 italic font-normal">No topic yet</span>}
-                      </div>
+                      </h2>
                       {hostLabel && (
-                        <div class="mt-2 sm:mt-3 flex items-center gap-2 text-xs">
+                        <div class="mt-2 md:mt-4 lg:mt-2 flex items-center gap-2 text-xs sm:text-sm min-w-0">
                           {s.host_headshot_url ? (
-                            <img src={s.host_headshot_url} alt="" class="w-5 h-5 rounded-full object-cover shrink-0" />
+                            <img src={s.host_headshot_url} alt="" class="w-5 h-5 md:w-7 md:h-7 lg:w-5 lg:h-5 rounded-full object-cover shrink-0" />
                           ) : (
-                            <span class="w-5 h-5 rounded-full bg-base-200 border border-base-300 flex items-center justify-center font-mono text-[10px] opacity-60 shrink-0">
+                            <span class="w-5 h-5 md:w-7 md:h-7 lg:w-5 lg:h-5 rounded-full bg-base-200 border border-base-300 flex items-center justify-center font-mono text-[10px] opacity-60 shrink-0">
                               {hostLabel.charAt(0).toUpperCase()}
                             </span>
                           )}
-                          <span class="opacity-70 truncate">{showName ?? hostLabel}</span>
+                          {showName ? (
+                            <span class="opacity-80 truncate">
+                              <span class="font-semibold">{showName}</span>
+                              <span class="opacity-60 hidden sm:inline"> · {hostLabel}</span>
+                            </span>
+                          ) : (
+                            <span class="opacity-80 truncate">with <span class="font-semibold">{hostLabel}</span></span>
+                          )}
                         </div>
                       )}
+                      <p class="mt-2 md:mt-4 lg:mt-2 font-mono text-[10px] sm:text-xs text-signal opacity-50 group-hover:opacity-100 transition-opacity">
+                        Open this episode →
+                      </p>
                     </div>
                   </div>
                 </a>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  )}
+              );
+            })()}
 
-  {/* ─── Shows grid ──────────────────────────────────────────────────── */}
-  {/* The slate's roster of programs. Each show is a tile: cover image
-      (square) + show name + "hosted by X" line + episode count.
-      Clicking lands on /[slate]/shows/[slug] (the show's page), not
-      /[slate]/hosts/[id] (the person). The host's name is still a link
-      to their personal page within the card. */}
-  {shows.length > 0 && (
-    <section class="py-12 md:py-16 border-t border-base-300">
-      <header class="flex items-baseline justify-between mb-6">
-        <h2 class="text-2xl md:text-3xl font-bold tracking-tight">The shows</h2>
-        <span class="font-mono text-xs opacity-50">
-          {showCount} {showCount === 1 ? 'show' : 'shows'}
-        </span>
-      </header>
-      <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {shows.map(s => {
-          const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
-          return (
-          <li>
-            <a href={`/${slate.slug}/shows/${s.slug}`}
-               class="group flex gap-5 p-5 rounded-lg border border-base-300 hover:border-signal transition-colors h-full">
-              <div class="shrink-0">
-                {s.cover_image_url ? (
-                  <div class="w-20 h-20 md:w-24 md:h-24 rounded overflow-hidden bg-black border border-base-300">
-                    <img src={s.cover_image_url} alt="" class="w-full h-full object-contain" />
-                  </div>
-                ) : (
-                  <div class="w-20 h-20 md:w-24 md:h-24 rounded bg-gradient-to-br from-signal/15 to-base-200 border border-base-300 flex items-center justify-center text-3xl font-mono opacity-60">
-                    {s.name.charAt(0).toUpperCase()}
-                  </div>
-                )}
-              </div>
-              <div class="min-w-0 flex-1">
-                <div class="flex items-baseline gap-2">
-                  <span class="font-bold text-base md:text-lg truncate group-hover:text-signal transition-colors">{s.name}</span>
-                  {s.episode_count > 0 && (
-                    <span class="font-mono text-xs opacity-50 shrink-0">{s.episode_count} ep</span>
-                  )}
-                </div>
-                {hostLabel && (
-                  <p class="text-xs opacity-60 mt-1 line-clamp-1 flex items-center gap-1.5">
-                    {s.host_headshot_url && (
-                      <img src={s.host_headshot_url} alt="" class="w-4 h-4 rounded-full object-cover" />
-                    )}
-                    <span>hosted by {hostLabel}</span>
-                  </p>
-                )}
-                {s.description && (
-                  <p class="text-sm opacity-80 mt-2 line-clamp-3 leading-snug">{s.description}</p>
-                )}
-                <p class="mt-3 font-mono text-xs text-signal opacity-0 group-hover:opacity-100 transition-opacity">
-                  View show →
-                </p>
-              </div>
-            </a>
-          </li>
-          );
-        })}
-      </ul>
-    </section>
-  )}
-
-  {/* ─── Topic Pool ───────────────────────────────────────────────────── */}
-  {/* Unscheduled, voteable topics. Anything already attached to an
-      upcoming slot belongs in "Up next" instead; this list filters it
-      out at query time so the marquee can't double-show a topic. */}
-  {topTopics.length > 0 && (
-    <section id="topics" class="py-12 md:py-16 border-t border-base-300">
-      <header class="flex items-baseline justify-between mb-6">
-        <h2 class="text-2xl md:text-3xl font-bold tracking-tight">Topic Pool</h2>
-        <a href={`/${slate.slug}/topics`} class="text-sm opacity-70 hover:text-signal hover:opacity-100">
-          See all →
-        </a>
-      </header>
-      <ol class="space-y-1 max-w-3xl">
-        {topTopics.map((t, i) => (
-          <li>
-            <a href={`/${slate.slug}/topics/${t.id}`}
-               class="group flex items-baseline gap-4 py-3 border-b border-base-300/50 last:border-b-0 -mx-2 px-2 rounded hover:bg-base-200/40 transition-colors">
-              <span class="font-mono text-xs opacity-40 w-6 shrink-0 tabular-nums">
-                {String(i + 1).padStart(2, '0')}
-              </span>
-              <span class="font-mono text-sm text-signal w-12 shrink-0 tabular-nums">
-                ★ {t.upvote_count}
-              </span>
-              <span class="flex-1 truncate group-hover:text-signal transition-colors">{t.title}</span>
-              <span class="font-mono text-xs opacity-0 group-hover:opacity-60 transition-opacity shrink-0">
-                read →
-              </span>
-            </a>
-          </li>
-        ))}
-      </ol>
-      <p class="mt-6 text-sm opacity-70">
-        {(isMember || isHost) ? (
-          <>
-            <a href={`/${slate.slug}/edit`} class="link link-hover text-signal">Open the dashboard</a> to vote and post your own.
-          </>
-        ) : isSignedIn ? (
-          <>
-            <a href={`/${slate.slug}/join`} class="link link-hover text-signal">Join as a Member</a> to vote and post your own.
-          </>
-        ) : (
-          <>
-            <a href={signInHref} class="link link-hover text-signal">Sign in</a> to vote on these or post your own.
-          </>
+            {/* Remaining upcoming slots — always horizontal "list row"
+                shape (thumb left, info right). Mobile and split-view
+                are the only two states; no in-between vertical-tile
+                layout. Thumb sizes 88px → 112px at lg+. */}
+            {upcoming.length > 1 && (
+              <ul class="grid grid-cols-1 gap-3 mt-4">
+                {upcoming.slice(1).map(s => {
+                  const date = new Date(s.start_time * 1000);
+                  const dateStr = fmtUpcoming.format(date);
+                  const timeStr = fmtUpcomingTime.format(date);
+                  const iso = isoFor(s.start_time);
+                  const hostLabel = s.host_email ? hostNameOrFallback(s.host_display_name, s.host_email) : null;
+                  const tileArt = s.promo_image_url ?? s.show_cover ?? slate.artwork_image_url;
+                  const showName = s.show_name;
+                  const href = s.topic_id ? `/${slate.slug}/topics/${s.topic_id}` : `/${slate.slug}/slot/${s.id}`;
+                  return (
+                    <li>
+                      <a href={href}
+                         class="block rounded border border-base-300 hover:border-signal transition-colors h-full overflow-hidden">
+                        <div class="grid grid-cols-[88px_minmax(0,1fr)] lg:grid-cols-[112px_minmax(0,1fr)] gap-0">
+                          {tileArt ? (
+                            <div class="aspect-square overflow-hidden border-r border-base-300 bg-black">
+                              <img src={tileArt} alt="" class="w-full h-full object-contain" />
+                            </div>
+                          ) : (
+                            <div class="aspect-square bg-gradient-to-br from-signal/10 to-base-200 border-r border-base-300"></div>
+                          )}
+                          <div class="p-3 lg:p-4 min-w-0">
+                            <div class="flex items-baseline justify-between gap-2 font-mono text-xs">
+                              <time datetime={iso} data-localize="date" class="text-signal truncate">{dateStr}</time>
+                              <time datetime={iso} data-localize="time-tz" class="opacity-60 shrink-0">{timeStr}</time>
+                            </div>
+                            <div class="mt-2 font-semibold leading-snug line-clamp-3 text-sm">
+                              {s.title ?? <span class="opacity-50 italic font-normal">No topic yet</span>}
+                            </div>
+                            {hostLabel && (
+                              <div class="mt-2 flex items-center gap-2 text-xs">
+                                {s.host_headshot_url ? (
+                                  <img src={s.host_headshot_url} alt="" class="w-5 h-5 rounded-full object-cover shrink-0" />
+                                ) : (
+                                  <span class="w-5 h-5 rounded-full bg-base-200 border border-base-300 flex items-center justify-center font-mono text-[10px] opacity-60 shrink-0">
+                                    {hostLabel.charAt(0).toUpperCase()}
+                                  </span>
+                                )}
+                                <span class="opacity-70 truncate">{showName ?? hostLabel}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         )}
-      </p>
+
+        {/* Topic Pool — unscheduled, voteable topics. Header uses the
+            same `// caption` style as `// next up` so the two columns
+            read as siblings on desktop. */}
+        {topTopics.length > 0 && (
+          <div id="topics" class={`min-w-0 ${upcoming.length > 0 ? 'lg:col-span-3' : ''}`}>
+            <div class="flex items-baseline justify-between mb-3">
+              <p class="font-mono text-xs text-signal">// topic pool</p>
+              <a href={`/${slate.slug}/topics`} class="font-mono text-xs opacity-50 hover:text-signal hover:opacity-100 transition-colors">
+                see all →
+              </a>
+            </div>
+            <ol class="space-y-1">
+              {topTopics.map((t, i) => (
+                <li>
+                  <a href={`/${slate.slug}/topics/${t.id}`}
+                     class="group flex items-baseline gap-3 py-3 border-b border-base-300/50 last:border-b-0 -mx-2 px-2 rounded hover:bg-base-200/40 transition-colors">
+                    <span class="font-mono text-xs opacity-40 w-6 shrink-0 tabular-nums">
+                      {String(i + 1).padStart(2, '0')}
+                    </span>
+                    <span class="font-mono text-sm text-signal w-12 shrink-0 tabular-nums">
+                      ★ {t.upvote_count}
+                    </span>
+                    {t.comment_count > 0 && (
+                      <span class="font-mono text-xs opacity-60 w-10 shrink-0 tabular-nums" title={`${t.comment_count} comment${t.comment_count === 1 ? '' : 's'}`}>
+                        💬 {t.comment_count}
+                      </span>
+                    )}
+                    <span class="flex-1 truncate group-hover:text-signal transition-colors">{t.title}</span>
+                    <span class="font-mono text-xs opacity-0 group-hover:opacity-60 transition-opacity shrink-0">
+                      read →
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ol>
+            {totalTopicCount > topTopics.length && (
+              <p class="mt-4">
+                <a href={`/${slate.slug}/topics`}
+                   class="font-mono text-sm text-signal hover:underline">
+                  see all ({totalTopicCount}) →
+                </a>
+              </p>
+            )}
+            <p class="mt-6 text-sm opacity-70">
+              {(isMember || isHost) ? (
+                <>
+                  <a href={`/${slate.slug}/edit`} class="link link-hover text-signal">Open the dashboard</a> to vote and post your own.
+                </>
+              ) : isSignedIn ? (
+                <>
+                  <a href={`/${slate.slug}/join`} class="link link-hover text-signal">Join as a Member</a> to vote and post your own.
+                </>
+              ) : (
+                <>
+                  <a href={signInHref} class="link link-hover text-signal">Sign in</a> to vote on these or post your own.
+                </>
+              )}
+            </p>
+          </div>
+        )}
+      </div>
     </section>
   )}
+
+  {/* The slate's roster of programs lives at /[slate]/shows now (linked
+      from the nav). Keeps this page focused on next-up + topics +
+      past episodes. */}
 
   {/* ─── Past episodes ───────────────────────────────────────────────── */}
   {pastEpisodes.length > 0 && (
@@ -407,7 +360,7 @@ if (isMember || isHost) {
   )}
 
   {/* ─── Empty state if nothing yet ──────────────────────────────────── */}
-  {shows.length === 0 && upcoming.length === 0 && topTopics.length === 0 && pastEpisodes.length === 0 && (
+  {upcoming.length === 0 && topTopics.length === 0 && pastEpisodes.length === 0 && (
     <section class="py-20 text-center max-w-2xl mx-auto">
       <p class="font-mono text-sm text-signal mb-2">// new slate</p>
       <h2 class="text-2xl font-bold">Nothing here yet.</h2>
@@ -419,7 +372,7 @@ if (isMember || isHost) {
   )}
 
   {/* ─── Closing CTA ─────────────────────────────────────────────────── */}
-  {(shows.length > 0 || upcoming.length > 0 || topTopics.length > 0 || pastEpisodes.length > 0) && (
+  {(upcoming.length > 0 || topTopics.length > 0 || pastEpisodes.length > 0) && (
     <section class="py-16 border-t border-base-300 text-center">
       <p class="font-mono text-xs text-signal mb-2">// join the show</p>
       <p class="text-lg md:text-xl font-bold max-w-xl mx-auto leading-snug">

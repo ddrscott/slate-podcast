@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import SlateChildPage from '@/components/SlateChildPage.astro';
 import { getDb } from '@/lib/db';
 import { signInUrlForCtx, isAppAdmin } from '@/lib/auth';
 
@@ -9,8 +10,8 @@ const slug = Astro.params.slate;
 if (!slug) return new Response('Not found', { status: 404 });
 
 const db = getDb(Astro);
-const slate = await db.prepare('SELECT id, name FROM slates WHERE slug = ?').bind(slug)
-  .first<{ id: string; name: string }>();
+const slate = await db.prepare('SELECT id, name, artwork_image_url FROM slates WHERE slug = ?').bind(slug)
+  .first<{ id: string; name: string; artwork_image_url: string | null }>();
 if (!slate) return new Response('Not found', { status: 404 });
 
 const user = Astro.locals.user;
@@ -24,9 +25,12 @@ if (!isAppAdmin(user.scopes)) {
 }
 ---
 
-<Layout title={`Suggest a topic · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
-  <section class="py-8 max-w-2xl">
-    <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
+<Layout title={`Suggest a topic · ${slate.name}`} slate={{ name: slate.name, slug: slug!, artwork_image_url: slate.artwork_image_url }}>
+  <SlateChildPage
+    parent={{ label: 'Topics', href: `/${slug}/topics` }}
+    current="Suggest"
+    width="narrow"
+  >
     <h1 class="text-2xl font-bold">Suggest a topic</h1>
     <p class="opacity-75 mt-2 text-sm">
       Add an idea to the pool. Hosts pick from the most-upvoted topics when filling slots.
@@ -62,7 +66,7 @@ if (!isAppAdmin(user.scopes)) {
       </div>
       <p id="status" class="text-sm hidden"></p>
     </form>
-  </section>
+  </SlateChildPage>
 
   <script is:inline define:vars={{ slateId: slate.id, slug }}>
     const form = document.getElementById('suggest-form');

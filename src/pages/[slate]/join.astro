@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import SlateChildPage from '@/components/SlateChildPage.astro';
 import { getDb } from '@/lib/db';
 import { signInUrlForCtx } from '@/lib/auth';
 
@@ -10,8 +11,8 @@ if (!slug) return new Response('Not found', { status: 404 });
 
 const db = getDb(Astro);
 const slate = await db.prepare(
-  `SELECT id, name, description, is_public FROM slates WHERE slug = ?`,
-).bind(slug).first<{ id: string; name: string; description: string | null; is_public: number }>();
+  `SELECT id, name, description, is_public, artwork_image_url FROM slates WHERE slug = ?`,
+).bind(slug).first<{ id: string; name: string; description: string | null; is_public: number; artwork_image_url: string | null }>();
 if (!slate) return new Response('Not found', { status: 404 });
 
 const user = Astro.locals.user;
@@ -22,9 +23,13 @@ const member = await db.prepare(
 ).bind(slate.id, user.id).first<{ role: string; is_admin: number }>();
 ---
 
-<Layout title={`Join ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
-  <section class="py-8 max-w-md mx-auto">
-    <h1 class="text-2xl font-bold">{slate.name}</h1>
+<Layout title={`Join ${slate.name}`} slate={{ name: slate.name, slug: slug!, artwork_image_url: slate.artwork_image_url }}>
+  <SlateChildPage
+    parent={{ label: slate.name, href: `/${slug}` }}
+    current="Join"
+    width="narrow"
+  >
+    <h1 class="text-2xl font-bold">Join {slate.name}</h1>
     {slate.description && <p class="opacity-75 mt-2">{slate.description}</p>}
 
     {member ? (
@@ -44,9 +49,7 @@ const member = await db.prepare(
         <p id="status" class="mt-3 text-sm hidden"></p>
       </div>
     )}
-
-    <p class="mt-6 text-sm"><a href={`/${slug}`} class="link">← Back to schedule</a></p>
-  </section>
+  </SlateChildPage>
 
   <script is:inline define:vars={{ slateId: slate.id, slug }}>
     const btn = document.getElementById('join-btn');

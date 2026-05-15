@@ -1,0 +1,38 @@
+---
+// Shared body wrapper for slate child pages. Provides consistent
+// padding, max-width, and breadcrumb. Goes INSIDE Layout.astro:
+//
+//   <Layout title=... slate=...>
+//     <SlateChildPage parent={...} current="...">
+//       ...page content...
+//     </SlateChildPage>
+//   </Layout>
+//
+// Width:
+//   narrow  — max-w-2xl  (forms, settings panes)
+//   medium  — max-w-4xl  (articles, wikis, detail pages — default)
+//   wide    — max-w-6xl  (dashboards, grids)
+//
+// Omit `parent` to skip the breadcrumb (category-listing pages).
+
+import Breadcrumb from './Breadcrumb.astro';
+
+interface Props {
+  parent?: { label: string; href: string };
+  current?: string;
+  width?: 'narrow' | 'medium' | 'wide';
+}
+
+const { parent, current, width = 'medium' } = Astro.props;
+
+const widthClass = {
+  narrow: 'max-w-2xl',
+  medium: 'max-w-4xl',
+  wide: 'max-w-6xl',
+}[width];
+---
+
+<article class={`py-6 md:py-8 ${widthClass}`}>
+  {parent && <Breadcrumb parent={parent} current={current} />}
+  <slot />
+</article>

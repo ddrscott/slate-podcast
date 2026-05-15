@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import SlateChildPage from '@/components/SlateChildPage.astro';
 import ShowNotesView from '@/components/ShowNotesView';
 import { getDb, getEnv } from '@/lib/db';
 import { isAppAdmin, signInUrl } from '@/lib/auth';
@@ -19,8 +20,8 @@ if (!slug || !hostUserId) return new Response('Not found', { status: 404 });
 const db = getDb(Astro);
 
 const slate = await db.prepare(
-  'SELECT id, slug, name, description, timezone, is_public FROM slates WHERE slug = ?',
-).bind(slug).first<{ id: string; slug: string; name: string; description: string | null; timezone: string; is_public: number }>();
+  'SELECT id, slug, name, description, timezone, is_public, artwork_image_url FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; slug: string; name: string; description: string | null; timezone: string; is_public: number; artwork_image_url: string | null }>();
 if (!slate) return new Response('Not found', { status: 404 });
 if (!slate.is_public) return new Response('Private slate', { status: 403 });
 
@@ -101,14 +102,13 @@ const fmtEpisode = new Intl.DateTimeFormat('en-US', {
 <Layout
   title={`${pageTitle} · ${slate.name}`}
   description={host.bio ?? `${pageTitle} on ${slate.name}`}
-  slate={{ name: slate.name, slug: slate.slug }}
+  slate={{ name: slate.name, slug: slate.slug, artwork_image_url: slate.artwork_image_url }}
   slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
 >
-  <article class="py-6 md:py-8 max-w-4xl">
-    <p class="text-xs font-mono opacity-60 mb-4">
-      <a href={`/${slate.slug}`} class="link link-hover">← {slate.name}</a>
-    </p>
-
+  <SlateChildPage
+    parent={{ label: slate.name, href: `/${slate.slug}` }}
+    current={pageTitle}
+  >
     {/* ─── Header card: artwork/headshot + show + person ─────────────── */}
     <header class="flex flex-wrap items-start gap-5 md:gap-6">
       <div class="shrink-0">
@@ -236,5 +236,5 @@ const fmtEpisode = new Intl.DateTimeFormat('en-US', {
         <a href={signInHref} class="link link-hover text-signal">Sign in</a> to join this slate and contribute.
       </p>
     )}
-  </article>
+  </SlateChildPage>
 </Layout>

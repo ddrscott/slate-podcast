@@ -45,4 +45,6 @@ Why it's built this way.
 - [Why "slates" instead of shows + organizations](explanation/why-slates.md)
 - [Why auth lives at `auth.ljs.app`, not in Slate](explanation/auth-via-auth-ljs-app.md)
 - [Why a shared topic pool](explanation/topic-pool.md)
+- [Why comments live on topics, not slots](explanation/topic-discussion.md)
+- [The slate child-page pattern (Layout + SlateChildPage + Breadcrumb)](explanation/slate-child-page-pattern.md)
 - [Stack rationale](explanation/stack-choices.md)

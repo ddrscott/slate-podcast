@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import SlateChildPage from '@/components/SlateChildPage.astro';
 import HostProfileEditor from '@/components/HostProfileEditor';
 import { getDb, getEnv } from '@/lib/db';
 import { isAppAdmin, signInUrl } from '@/lib/auth';
@@ -18,8 +19,8 @@ if (!slug || !hostUserId) return new Response('Not found', { status: 404 });
 const db = getDb(Astro);
 
 const slate = await db.prepare(
-  'SELECT id, slug, name, is_public FROM slates WHERE slug = ?',
-).bind(slug).first<{ id: string; slug: string; name: string; is_public: number }>();
+  'SELECT id, slug, name, is_public, artwork_image_url FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; slug: string; name: string; is_public: number; artwork_image_url: string | null }>();
 if (!slate) return new Response('Not found', { status: 404 });
 if (!slate.is_public) return new Response('Private slate', { status: 403 });
 
@@ -61,18 +62,15 @@ const pageTitle = host.show_name ?? personName;
 
 <Layout
   title={`Edit page · ${pageTitle}`}
-  slate={{ name: slate.name, slug: slate.slug }}
+  slate={{ name: slate.name, slug: slate.slug, artwork_image_url: slate.artwork_image_url }}
   slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
 >
-  <article class="py-6 md:py-8 max-w-4xl">
-    <p class="text-xs font-mono opacity-60 mb-4">
-      <a href={`/${slate.slug}/hosts/${host.id}`} class="link link-hover">← {pageTitle}</a>
-    </p>
-
+  <SlateChildPage
+    parent={{ label: pageTitle, href: `/${slate.slug}/hosts/${host.id}` }}
+    current="Edit"
+  >
     <h1 class="text-2xl md:text-3xl font-bold mb-2">Editing your page</h1>
     <p class="text-sm opacity-70 mb-6">
-      <span class="font-mono">// {pageTitle}</span>
-      <br />
       Markdown. Links, images, embedded videos, donation buttons, lists — anything.
       Every save creates a revision with your name on it.
     </p>
@@ -84,5 +82,5 @@ const pageTitle = host.show_name ?? personName;
       hostUserId={host.id}
       initialBody={host.profile_body}
     />
-  </article>
+  </SlateChildPage>
 </Layout>

@@ -26,20 +26,35 @@ src/
 │   │   └── slates/new.astro                     Create-slate wizard
 │   │
 │   ├── [slate]/                                 Per-slate pages (slug-routed)
-│   │   ├── index.astro                          Public schedule grid
-│   │   ├── slot/[id].astro                      Slot detail + claim + notes
+│   │   ├── index.astro                          Public marquee (SlateMarquee — next-up + topic pool + past episodes)
+│   │   ├── slot/[id].astro                      Slot detail + claim + show-notes + topic-discussion (inline)
 │   │   ├── day/[date].astro                     Multi-slot day view
 │   │   ├── join.astro                           Join as Member
-│   │   ├── suggest.astro                        Submit topic
-│   │   ├── topics.astro                    Topic pool browser
 │   │   ├── activity.astro                       Per-slate activity feed
-│   │   └── admin/                               Host/App-Admin only
-│   │       ├── index.astro                      Slate admin dashboard
-│   │       ├── people.astro                     Member ↔ Host promotions
+│   │   ├── topics/
+│   │   │   ├── index.astro                      Topic pool (filterable list)
+│   │   │   ├── new.astro                        Submit topic
+│   │   │   └── [id]/
+│   │   │       ├── index.astro                  Topic detail + notes wiki + discussion
+│   │   │       └── edit.astro                   Notes editor (members)
+│   │   ├── shows/
+│   │   │   ├── index.astro                      Public shows roster
+│   │   │   └── [slug]/
+│   │   │       ├── index.astro                  Show detail + wiki + upcoming/past episodes
+│   │   │       ├── edit.astro                   Show wiki + listen-on URLs (host/admin)
+│   │   │       └── slots.astro                  Bulk-assign open slots to this show
+│   │   ├── hosts/[id]/
+│   │   │   ├── index.astro                      Host wiki page
+│   │   │   └── edit.astro                       Host wiki editor (owner / admin)
+│   │   └── edit/                                Host / slate-admin dashboard (the "Manage" tab)
+│   │       ├── index.astro                      Topics dashboard + schedule grid
+│   │       ├── people.astro                     Member ↔ Host promotions, slate-admin grants
 │   │       ├── rules.astro                      Scheduling rules CRUD
-│   │       ├── slots.astro                      AG Grid sheet view
-│   │       ├── settings.astro                   Slate name/slug/timezone/visibility
-│   │       └── topics.astro                Topic moderation
+│   │       ├── slots.astro                      AG Grid sheet view (admin)
+│   │       ├── settings.astro                   Slate name/slug/timezone/visibility/cover
+│   │       ├── shows.astro                      Manage shows (create/rename/assign host)
+│   │       ├── marquee.astro                    Marquee artwork + accent color + listen-on URLs
+│   │       └── archive.astro                    Archived topics + cancelled slots
 │   │
 │   └── api/                                     JSON endpoints (Astro endpoints)
 │       ├── auth/{callback,sign-out}.ts          Receives JWT from auth.ljs.app; clears cookie
@@ -49,40 +64,74 @@ src/
 │       ├── slates/[id].ts                       Update slate
 │       ├── slates/[id]/join.ts                  Member self-join
 │       ├── slates/[id]/open-slots.ts            JSON list of open slots
-│       ├── slates/[id]/hosts.ts              List hosts
-│       ├── slates/[id]/hosts/[user_id].ts    Promote / demote
-│       ├── slates/[id]/topics.ts           Create topic
-│       ├── slates/[id]/topics/check.ts     Fingerprint dedupe check
+│       ├── slates/[id]/hosts.ts                 List hosts
+│       ├── slates/[id]/hosts/[user_id].ts       Promote / demote
+│       ├── slates/[id]/topics.ts                Create topic
+│       ├── slates/[id]/topics/check.ts          Fingerprint dedupe check
 │       ├── slates/[id]/activity/mark-read.ts    Watermark
+│       ├── slates/[id]/shows/...                Show CRUD + bulk-assign-slots
 │       ├── slates/[id]/admin/{rules,slots,bulk-edit,regenerate-slots,export.csv}.ts
-│       ├── slots/[id]/{claim-and-schedule,assign-host,topic,show-notes,assets,promo-image}.ts
+│       ├── slots/[id]/{claim,claim-and-schedule,assign-host,topic,show-notes,assets,promo-image}.ts
 │       ├── slot-assets/[id].ts                  Update / delete asset
-│       ├── topics/[id]/vote.ts             Toggle upvote
-│       └── admin/{rules,slots,topics}/[id]…   Cross-slate admin actions
+│       ├── topics/[id]/vote.ts                  Toggle upvote
+│       ├── topics/[id]/notes.ts                 Save / read wiki notes
+│       ├── topics/[id]/comments.ts              Post a comment or reply
+│       ├── comments/[id].ts                     PATCH (edit, author-only) / DELETE (soft, author or admin)
+│       └── admin/{rules,slots,topics}/[id]…     Cross-slate admin actions
 
 ├── components/
+│   ├── Layout.astro                    (in layouts/) top-level shell + nav
+│   ├── SlateChildPage.astro            Body wrapper: consistent padding + width + Breadcrumb
+│   ├── Breadcrumb.astro                Slate-child header: ← parent / current
+│   ├── SlateMarquee.astro              Public landing surface: next-up + topic pool + past
+│   ├── SlateSidebar.astro              Edit dashboard sidebar (categories + mini calendar)
+│   ├── EditSubnav.astro                Edit-dashboard tab bar
+│   ├── ActivityTokens.astro            Renders activity-feed token streams
 │   ├── ScheduleGrid.tsx                Year-view month grid (public)
-│   ├── ScheduleTopicPanel.astro   Claim-and-schedule UI
+│   ├── ScheduleTopicPanel.astro        Claim-and-schedule UI
 │   ├── SlotsAGGrid.tsx                 Excel-like admin slot grid
-│   ├── ShowNotesEditor.tsx             Markdown editor + asset CRUD
-│   └── ShowNotesView.tsx               Sanitized public render
+│   ├── SlotAssigner.tsx                Bulk-assign form (recurrence + time + tz filters)
+│   ├── ShowEditor.tsx                  Show wiki + listen-on URLs editor (React island)
+│   ├── ShowNotesEditor.tsx             Show-notes markdown editor + asset CRUD
+│   ├── ShowNotesView.tsx               Sanitized public markdown render
+│   ├── TopicCard.astro                 Topic row used in pool + dashboard (click → detail)
+│   ├── TopicNotesEditor.tsx            Wiki notes editor (React island)
+│   ├── TopicDiscussion.astro           Comment thread surface (header + tree + composer)
+│   ├── Comment.astro                   Recursive single comment + reply tree
+│   ├── ListenOnRow.astro               Apple/Spotify/YouTube/RSS icon row
+│   └── HostProfileEditor.tsx           Host wiki editor (React island)
 
 └── lib/
     ├── auth.ts                JWT verify, signInUrl, cookie helpers (no DB sessions)
-    ├── access.ts              requireUser / requireHostOnSlate / HttpError / jsonOk/jsonError
-    ├── activity.ts            logActivity helper + ActivityKind union
+    ├── access.ts              requireUser / requireMemberOnSlate / requireHostOnSlate / HttpError / jsonOk/jsonError
+    ├── activity.ts            logActivity + Enqueue.* helpers + ActivityKind union + renderer registry
     ├── analytics.ts           Plausible event helper
+    ├── comments.ts            fetchTopicComments — flat SELECT + in-memory tree assembly
     ├── db.ts                  D1 helpers, ID generation, slugify, fingerprint
     ├── email.ts               Resend client (used for reminders only)
+    ├── people.ts              displayName() — picks display_name ?? humanized email
     ├── recurrence.ts          Tz-aware rule expansion
     ├── reminders.ts           48h/24h cron logic with dedupe
     └── uploads.ts             R2 image upload helpers
+
+migrations/                    Numbered SQL files applied via `wrangler d1 execute --file`
+├── 0001_speakers_to_hosts.sql
+├── 0002_host_profile_fields.sql
+├── 0003_marquee_artwork.sql
+├── 0004_topic_notes.sql
+├── 0005_host_show_identity.sql
+├── 0006_host_wiki.sql
+├── 0007_slate_admin_flag.sql
+├── 0008_shows.sql
+├── 0009_topic_comments.sql
+└── 0010_comments_topic_active_index.sql
 
 scripts/
 ├── test-recurrence.mjs        Smoke test for the recurrence engine
 ├── test-auth-callback.mjs     Smoke test for /api/auth/callback
 ├── test-v2-flow.mjs           End-to-end smoke test for the v2 flow
-└── seed-ar-topics.mjs    One-shot seed for the AR Daily slate
+├── assign-show-slots.mjs      Bulk-assign + create slots for a show on a recurring pattern (CLI; ops use)
+└── seed-ar-topics.mjs         One-shot seed for the AR Daily slate
 
 docs/                          You are here.
 ├── tutorials/                 Learning-oriented

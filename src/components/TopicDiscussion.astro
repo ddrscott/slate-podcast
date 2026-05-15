@@ -1,0 +1,218 @@
+---
+// Discussion thread on a topic. Server-rendered tree of comments +
+// inline composer at the bottom for members.
+//
+// Used on:
+//   • /[slate]/topics/[id]    — the canonical home of the thread
+//   • /[slate]/slot/[id]      — when slot.topic_id is set, render the
+//                               same thread inline so members can join
+//                               the discussion without a click-through
+//
+// The composer/edit/reply/delete handlers are wired up by a single
+// hoisted <script> at the bottom of this component. Reload-after-write
+// keeps the implementation tiny — the volume is small enough that we
+// don't need optimistic UI.
+
+import Comment from './Comment.astro';
+import type { CommentNode } from '@/lib/comments';
+
+interface Props {
+  // Where to POST new comments (the canonical topic-id route, even when
+  // the discussion is being rendered on a slot page).
+  topicId: string;
+  // Comment tree.
+  tree: CommentNode[];
+  // Viewer context.
+  viewerId: string | null;
+  viewerIsMember: boolean;
+  viewerIsAdmin: boolean;
+  // Where to send anonymous viewers when they try to post.
+  signInHref: string;
+  // Optional title (defaults to "Discussion"). Slot pages override to
+  // make the topic-link relationship obvious.
+  heading?: string;
+  // Optional context line under the heading (e.g. "Comments thread is
+  // attached to the topic, so anyone reading either page sees it.").
+  subtext?: string;
+}
+
+const {
+  topicId, tree, viewerId, viewerIsMember, viewerIsAdmin,
+  signInHref, heading = 'Discussion', subtext,
+} = Astro.props;
+
+const canPost = viewerIsMember;
+const count = (function countAll(nodes: CommentNode[]): number {
+  let n = 0;
+  for (const node of nodes) n += 1 + countAll(node.replies);
+  return n;
+})(tree);
+---
+
+<section
+  class="topic-discussion mt-10 border-t border-base-300 pt-8"
+  data-topic-id={topicId}
+  data-sign-in-href={signInHref}
+>
+  <header class="flex items-baseline justify-between mb-4">
+    <h2 class="text-xl md:text-2xl font-bold">
+      <span class="font-mono text-signal text-xs align-middle">// </span>
+      {heading}
+      {count > 0 && (
+        <span class="ml-2 font-mono text-xs opacity-50">{count}</span>
+      )}
+    </h2>
+  </header>
+
+  {subtext && <p class="text-sm opacity-70 mb-4">{subtext}</p>}
+
+  {tree.length === 0 && (
+    <p class="text-sm opacity-60">
+      {canPost ? 'No comments yet — start the thread.' : 'No comments yet.'}
+    </p>
+  )}
+
+  <div data-comments-tree class="divide-y divide-base-300/40">
+    {tree.map(node => (
+      <Comment
+        comment={node}
+        viewerId={viewerId}
+        viewerIsAdmin={viewerIsAdmin}
+        canPost={canPost}
+      />
+    ))}
+  </div>
+
+  {canPost ? (
+    <form data-composer data-parent-id="" class="mt-6">
+      <label class="form-control">
+        <span class="label-text text-xs font-mono opacity-60">// new comment · markdown</span>
+        <textarea name="body" rows="3" required maxlength="10000"
+                  class="textarea textarea-bordered mt-1"
+                  placeholder="Add to the discussion…"></textarea>
+      </label>
+      <div class="mt-2 flex items-center gap-3">
+        <button type="submit" class="btn btn-sm btn-primary">Post</button>
+        <span data-composer-status class="text-xs opacity-70"></span>
+      </div>
+    </form>
+  ) : (
+    <p class="mt-6 text-sm opacity-70">
+      <a href={signInHref} class="link link-hover text-signal">Sign in</a> as a member to join the discussion.
+    </p>
+  )}
+</section>
+
+<script>
+  // Single delegated handler for the whole .topic-discussion surface.
+  // Every comment node carries data-action attrs on its inline buttons;
+  // we listen at the section level to keep things simple. Reload after
+  // every successful mutation — small enough volume that we don't need
+  // optimistic UI or DOM patching.
+
+  document.querySelectorAll<HTMLElement>('.topic-discussion').forEach(section => {
+    const topicId = section.dataset.topicId!;
+    const composerEl = section.querySelector<HTMLFormElement>('[data-composer]');
+
+    async function postComment(body: string, parentId: string | null): Promise<boolean> {
+      const res = await fetch(`/api/topics/${topicId}/comments`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ body, parent_id: parentId }),
+      });
+      if (res.ok) return true;
+      const e = await res.json().catch(() => ({}));
+      alert(`Couldn't post: ${e.error ?? res.status}`);
+      return false;
+    }
+
+    // Top-level composer.
+    composerEl?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = new FormData(composerEl);
+      const body = String(data.get('body') ?? '').trim();
+      if (!body) return;
+      const status = composerEl.querySelector('[data-composer-status]')!;
+      status.textContent = 'Posting…';
+      const ok = await postComment(body, null);
+      if (ok) location.reload();
+      else status.textContent = '';
+    });
+
+    // Inline reply / edit / delete via event delegation on the tree.
+    section.addEventListener('click', async (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const commentId = btn.dataset.commentId!;
+      const node = btn.closest<HTMLElement>('.comment-node');
+      if (!node) return;
+
+      if (action === 'reply') {
+        // If a reply form already exists, focus it. Otherwise inject one.
+        let form = node.querySelector<HTMLFormElement>(':scope > .inline-reply-form');
+        if (!form) {
+          form = document.createElement('form');
+          form.className = 'inline-reply-form ml-10 mb-3';
+          form.innerHTML = `
+            <textarea name="body" rows="2" required maxlength="10000"
+                      class="textarea textarea-bordered textarea-sm w-full"
+                      placeholder="Reply…"></textarea>
+            <div class="mt-1 flex items-center gap-2">
+              <button type="submit" class="btn btn-xs btn-primary">Reply</button>
+              <button type="button" data-action="cancel-reply" class="btn btn-xs btn-ghost">Cancel</button>
+            </div>`;
+          node.querySelector(':scope > div.flex')?.after(form);
+          form.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const body = String(new FormData(form!).get('body') ?? '').trim();
+            if (!body) return;
+            const ok = await postComment(body, commentId);
+            if (ok) location.reload();
+          });
+        }
+        form.querySelector<HTMLTextAreaElement>('textarea')?.focus();
+        return;
+      }
+
+      if (action === 'cancel-reply') {
+        node.querySelector(':scope > .inline-reply-form')?.remove();
+        return;
+      }
+
+      if (action === 'edit') {
+        const bodyEl = node.querySelector<HTMLElement>(':scope > div.flex [data-comment-body]');
+        if (!bodyEl) return;
+        // Pull current markdown via API (the rendered HTML in the DOM
+        // isn't a faithful round-trip). One small GET would be ideal,
+        // but we don't have one — so just prompt the user.
+        const current = prompt('Edit comment (markdown):', '');
+        if (current === null) return;
+        const trimmed = current.trim();
+        if (!trimmed) return;
+        const res = await fetch(`/api/comments/${commentId}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ body: trimmed }),
+        });
+        if (res.ok) location.reload();
+        else {
+          const ev = await res.json().catch(() => ({}));
+          alert(`Couldn't update: ${ev.error ?? res.status}`);
+        }
+        return;
+      }
+
+      if (action === 'delete') {
+        if (!confirm('Delete this comment?')) return;
+        const res = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
+        if (res.ok) location.reload();
+        else {
+          const ev = await res.json().catch(() => ({}));
+          alert(`Couldn't delete: ${ev.error ?? res.status}`);
+        }
+        return;
+      }
+    });
+  });
+</script>

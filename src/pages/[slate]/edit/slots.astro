@@ -14,8 +14,8 @@ const user = Astro.locals.user;
 if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/edit/slots`));
 
 const db = getDb(Astro);
-const slate = await db.prepare('SELECT id, name, timezone FROM slates WHERE slug = ?').bind(slug)
-  .first<{ id: string; name: string; timezone: string }>();
+const slate = await db.prepare('SELECT id, name, timezone, artwork_image_url FROM slates WHERE slug = ?').bind(slug)
+  .first<{ id: string; name: string; timezone: string; artwork_image_url: string | null }>();
 if (!slate) return new Response('Not found', { status: 404 });
 
 const member = await db.prepare(
@@ -42,7 +42,7 @@ const rows = await db.prepare(
 ).bind(slate.id).all<any>();
 ---
 
-<Layout title={`Slots · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}
+<Layout title={`Slots · ${slate.name}`} slate={{ name: slate.name, slug: slug!, artwork_image_url: slate.artwork_image_url }}
         slateContext={{ isMember: true, isHost: true, role: 'host' }}>
   <EditSubnav slug={slug!} isHost={true} current="slots" />
   <section class="py-6">

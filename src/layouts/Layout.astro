@@ -109,6 +109,11 @@ const computedOgDescription = ogDescription ?? (slate
         )}
 
         <nav class="text-sm flex items-center gap-1 sm:gap-2 shrink-0">
+          {slate && (
+            <a href={`/${slate.slug}/shows`} class="px-3 py-1.5 rounded text-sm hover:bg-base-200 hover:text-signal transition-colors">
+              Shows
+            </a>
+          )}
           {showActivityIcon && (
             <a
               href={`/${slate!.slug}/activity`}
@@ -190,6 +195,26 @@ const computedOgDescription = ogDescription ?? (slate
         });
         menu.querySelectorAll('a, button').forEach((el) => {
           el.addEventListener('click', () => { menu.open = false; });
+        });
+      })();
+    </script>
+    <script is:inline>
+      // Localize <time data-localize="..."> elements to the viewer's own
+      // timezone & locale. Server renders the slate's tz as a no-JS
+      // fallback; this script swaps in the viewer's local rendering.
+      (() => {
+        const formats = {
+          'date':         { weekday: 'short', month: 'short', day: 'numeric' },
+          'time-tz':      { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' },
+          'date-time-tz': { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' },
+        };
+        document.querySelectorAll('time[data-localize]').forEach((el) => {
+          const iso = el.getAttribute('datetime');
+          const opts = formats[el.dataset.localize];
+          if (!iso || !opts) return;
+          try {
+            el.textContent = new Intl.DateTimeFormat(undefined, opts).format(new Date(iso));
+          } catch {}
         });
       })();
     </script>

@@ -14,10 +14,10 @@ if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/edit/settings`
 
 const db = getDb(Astro);
 const slate = await db.prepare(
-  `SELECT id, slug, name, description, timezone, is_public, cover_image_url FROM slates WHERE slug = ?`,
+  `SELECT id, slug, name, description, timezone, is_public, cover_image_url, artwork_image_url FROM slates WHERE slug = ?`,
 ).bind(slug).first<{
   id: string; slug: string; name: string; description: string | null;
-  timezone: string; is_public: number; cover_image_url: string | null;
+  timezone: string; is_public: number; cover_image_url: string | null; artwork_image_url: string | null
 }>();
 if (!slate) return new Response('Not found', { status: 404 });
 
@@ -29,7 +29,7 @@ if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
 }
 ---
 
-<Layout title={`Settings · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}
+<Layout title={`Settings · ${slate.name}`} slate={{ name: slate.name, slug: slug!, artwork_image_url: slate.artwork_image_url }}
         slateContext={{ isMember: true, isHost: true, role: 'host' }}>
   <EditSubnav slug={slug!} isHost={true} current="settings" />
   <section class="py-8 max-w-2xl">

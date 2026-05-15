@@ -1,0 +1,118 @@
+---
+// Single comment in a topic discussion thread. Renders its body via the
+// existing ShowNotesView markdown renderer, and recursively renders its
+// replies indented underneath.
+//
+// Deleted state: body is replaced with a "[deleted]" placeholder, but
+// the node still renders so reply chains underneath keep their context.
+
+import ShowNotesView from './ShowNotesView';
+import { displayName } from '@/lib/people';
+import type { CommentNode } from '@/lib/comments';
+
+interface Props {
+  comment: CommentNode;
+  // The viewer's user id (or null if anonymous). Drives the edit/delete
+  // affordances on each node.
+  viewerId: string | null;
+  // True if the viewer can moderate (slate admin or App Admin). They
+  // can delete anyone's comments.
+  viewerIsAdmin: boolean;
+  // Are interactive controls (reply / edit / delete / composer) enabled
+  // for the viewer? False for non-members. Server-rendered: when false
+  // we still show the discussion read-only.
+  canPost: boolean;
+}
+
+const { comment, viewerId, viewerIsAdmin, canPost } = Astro.props;
+
+const isDeleted = !!comment.deleted_at;
+const isAuthor = !!viewerId && comment.author_id === viewerId;
+const canEdit = canPost && isAuthor && !isDeleted;
+const canDelete = canPost && (isAuthor || viewerIsAdmin) && !isDeleted;
+const wasEdited = !isDeleted && !!comment.updated_at;
+
+const authorName = isDeleted
+  ? '[deleted]'
+  : (comment.author_email
+      ? displayName({ display_name: comment.author_display_name, email: comment.author_email })
+      : '(unknown)');
+
+const fmtRel = (sec: number) => {
+  const diff = (Date.now() - sec * 1000) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  if (diff < 7 * 86400) return `${Math.floor(diff / 86400)}d`;
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    .format(new Date(sec * 1000));
+};
+---
+
+<article
+  class="comment-node"
+  data-comment-id={comment.id}
+  data-author-id={comment.author_id ?? ''}
+>
+  <div class="flex items-start gap-3 py-3">
+    {!isDeleted && comment.author_headshot_url ? (
+      <img src={comment.author_headshot_url} alt=""
+           class="w-7 h-7 rounded-full object-cover shrink-0" />
+    ) : (
+      <span class="w-7 h-7 rounded-full bg-base-200 border border-base-300 flex items-center justify-center font-mono text-xs opacity-60 shrink-0">
+        {isDeleted ? '×' : authorName.charAt(0).toUpperCase()}
+      </span>
+    )}
+    <div class="flex-1 min-w-0">
+      <div class="flex flex-wrap items-baseline gap-x-2 text-xs">
+        <span class={`font-semibold ${isDeleted ? 'opacity-50 italic' : ''}`}>{authorName}</span>
+        <span class="opacity-50 font-mono">{fmtRel(comment.created_at)}</span>
+        {wasEdited && <span class="opacity-40 font-mono">· edited</span>}
+      </div>
+
+      <div data-comment-body class="mt-1 text-sm">
+        {isDeleted ? (
+          <p class="opacity-50 italic">[deleted]</p>
+        ) : (
+          <ShowNotesView client:visible markdown={comment.body} />
+        )}
+      </div>
+
+      {!isDeleted && (
+        <div class="mt-1 flex items-center gap-3 text-xs font-mono opacity-60">
+          {canPost && (
+            <button type="button" data-action="reply" data-comment-id={comment.id}
+                    class="hover:text-signal hover:opacity-100 transition-colors">
+              reply
+            </button>
+          )}
+          {canEdit && (
+            <button type="button" data-action="edit" data-comment-id={comment.id}
+                    class="hover:text-signal hover:opacity-100 transition-colors">
+              edit
+            </button>
+          )}
+          {canDelete && (
+            <button type="button" data-action="delete" data-comment-id={comment.id}
+                    class="hover:text-error hover:opacity-100 transition-colors">
+              delete
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  </div>
+
+  {comment.replies.length > 0 && (
+    <div class="ml-5 md:ml-9 pl-3 md:pl-4 border-l border-base-300/70 mt-1">
+      {comment.replies.map(reply => (
+        <Astro.self
+          comment={reply}
+          viewerId={viewerId}
+          viewerIsAdmin={viewerIsAdmin}
+          canPost={canPost}
+        />
+      ))}
+    </div>
+  )}
+</article>

@@ -1,0 +1,29 @@
+---
+// Breadcrumb header for slate child pages. Two shapes:
+//
+//   `← {parent.label}`                           (no current — page IS the category)
+//   `← {parent.label} / {current}`               (child of a category or orphan)
+//
+// The parent.href is the back-target. For pages whose category has a
+// listing (e.g. Topics, Shows), it points to that listing. For orphan
+// pages (hosts/[id], slot/[id], day/[date]), it points to the slate
+// root and the label is the slate name — kept flat on purpose, no
+// fabricated hierarchies.
+
+interface Props {
+  parent: { label: string; href: string };
+  current?: string;
+}
+
+const { parent, current } = Astro.props;
+---
+
+<p class="text-xs font-mono opacity-60 mb-4">
+  <a href={parent.href} class="link link-hover">← {parent.label}</a>
+  {current && (
+    <>
+      <span class="mx-1 opacity-60">/</span>
+      <span>{current}</span>
+    </>
+  )}
+</p>

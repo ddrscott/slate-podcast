@@ -43,7 +43,7 @@ if (!isAppAdmin(user.scopes) && member?.role !== 'host') {
 const callerIsSlateHost = member?.role === 'host';
 ---
 
-<Layout title={`Marquee · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}
+<Layout title={`Marquee · ${slate.name}`} slate={{ name: slate.name, slug: slug!, artwork_image_url: slate.artwork_image_url }}
         slateContext={{ isMember: true, isHost: true, role: 'host' }}>
   <EditSubnav slug={slug!} isHost={true} current="marquee" />
   <section class="py-8 max-w-3xl">

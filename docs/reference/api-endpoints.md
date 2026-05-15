@@ -80,6 +80,18 @@ Authentication: most endpoints require a session cookie (set by `/api/auth/callb
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/topics/[id]/vote` | Toggle the user's upvote |
+| `POST` | `/api/topics/[id]/notes` | Save markdown notes (creates a `topic_revisions` row + activity event) |
+| `GET` | `/api/topics/[id]/notes` | Revision history (most recent 50) |
+| `POST` | `/api/topics/[id]/comments` | Post a comment or reply. Body: `{ body, parent_id? }`. Member-gated. |
+
+## Comments
+
+| Method | Path | Purpose |
+|---|---|---|
+| `PATCH` | `/api/comments/[id]` | Edit body (author-only) |
+| `DELETE` | `/api/comments/[id]` | Soft-delete (author OR slate admin OR App Admin) |
+
+Comments are anchored on `topic_id`. The slot detail page renders the same thread inline when `slot.topic_id` is set — no extra endpoint, the UI calls the topic-scoped POST. See [`explanation/topic-discussion.md`](../explanation/topic-discussion.md).
 
 ## Cron
 

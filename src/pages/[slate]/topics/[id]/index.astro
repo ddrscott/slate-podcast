@@ -1,9 +1,12 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import SlateChildPage from '@/components/SlateChildPage.astro';
 import ShowNotesView from '@/components/ShowNotesView';
+import TopicDiscussion from '@/components/TopicDiscussion.astro';
 import { getDb, getEnv } from '@/lib/db';
 import { isAppAdmin, signInUrl } from '@/lib/auth';
 import { displayName } from '@/lib/people';
+import { fetchTopicComments } from '@/lib/comments';
 
 export const prerender = false;
 
@@ -22,8 +25,8 @@ if (!slug || !topicId) return new Response('Not found', { status: 404 });
 const db = getDb(Astro);
 
 const slate = await db.prepare(
-  'SELECT id, slug, name, description, timezone, is_public FROM slates WHERE slug = ?',
-).bind(slug).first<{ id: string; slug: string; name: string; description: string | null; timezone: string; is_public: number }>();
+  'SELECT id, slug, name, description, timezone, is_public, artwork_image_url FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; slug: string; name: string; description: string | null; timezone: string; is_public: number; artwork_image_url: string | null }>();
 if (!slate) return new Response('Not found', { status: 404 });
 if (!slate.is_public) return new Response('Private slate', { status: 403 });
 
@@ -65,6 +68,8 @@ const env = getEnv(Astro);
 const reqUrl = new URL(Astro.request.url);
 const signInHref = signInUrl(env, reqUrl.origin, `/${slate.slug}/topics/${topic.id}`);
 
+const { tree: commentTree } = await fetchTopicComments(db as any, topic.id);
+
 // Revision history — most recent first, limited. Surfaced inline below
 // the notes; clicking through to a future "diff" view is a v2.
 const revisions = await db.prepare(
@@ -98,17 +103,13 @@ const scheduledHostName = topic.scheduled_host_email
 <Layout
   title={`${topic.title} · ${slate.name}`}
   description={topic.description ?? `Pre-show notes on ${slate.name}: ${topic.title}`}
-  slate={{ name: slate.name, slug: slate.slug }}
+  slate={{ name: slate.name, slug: slate.slug, artwork_image_url: slate.artwork_image_url }}
   slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
 >
-  <article class="py-6 md:py-8 max-w-4xl">
-    {/* Crumb back to slate */}
-    <p class="text-xs font-mono opacity-60 mb-4">
-      <a href={`/${slate.slug}`} class="link link-hover">← {slate.name}</a>
-      <span class="opacity-50"> · </span>
-      <a href={`/${slate.slug}/topics`} class="link link-hover">topics</a>
-    </p>
-
+  <SlateChildPage
+    parent={{ label: 'Topics', href: `/${slate.slug}/topics` }}
+    current={topic.title}
+  >
     {/* Status badge + scheduled-on line, if applicable */}
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 text-xs font-mono">
       <span class={`badge badge-sm ${
@@ -181,6 +182,16 @@ const scheduledHostName = topic.scheduled_host_email
       )}
     </section>
 
+    {/* ─── Discussion ───────────────────────────────────────────────── */}
+    <TopicDiscussion
+      topicId={topic.id}
+      tree={commentTree}
+      viewerId={user?.id ?? null}
+      viewerIsMember={isMember || isAdmin}
+      viewerIsAdmin={(!!member?.is_admin) || isAdmin}
+      signInHref={signInHref}
+    />
+
     {/* ─── Revision history ─────────────────────────────────────────── */}
     {revisions.results.length > 0 && (
       <section class="mt-10 border-t border-base-300 pt-8">
@@ -205,5 +216,5 @@ const scheduledHostName = topic.scheduled_host_email
         </ul>
       </section>
     )}
-  </article>
+  </SlateChildPage>
 </Layout>

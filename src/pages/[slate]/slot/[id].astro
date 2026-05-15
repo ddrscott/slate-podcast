@@ -1,10 +1,13 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import SlateChildPage from '@/components/SlateChildPage.astro';
 import ShowNotesEditor from '@/components/ShowNotesEditor';
 import ShowNotesView from '@/components/ShowNotesView';
+import TopicDiscussion from '@/components/TopicDiscussion.astro';
 import { getDb } from '@/lib/db';
 import { isAppAdmin, signInUrlForCtx } from '@/lib/auth';
 import { displayName } from '@/lib/people';
+import { fetchTopicComments } from '@/lib/comments';
 
 export const prerender = false;
 
@@ -14,8 +17,8 @@ if (!slug || !slotId) return new Response('Not found', { status: 404 });
 
 const db = getDb(Astro);
 const slate = await db.prepare(
-  `SELECT id, slug, name, timezone, is_public FROM slates WHERE slug = ?`,
-).bind(slug).first<{ id: string; slug: string; name: string; timezone: string; is_public: number }>();
+  `SELECT id, slug, name, timezone, is_public, artwork_image_url FROM slates WHERE slug = ?`,
+).bind(slug).first<{ id: string; slug: string; name: string; timezone: string; is_public: number; artwork_image_url: string | null }>();
 if (!slate || !slate.is_public) return new Response('Not found', { status: 404 });
 
 const slot = await db.prepare(
@@ -75,16 +78,30 @@ const availableTopics = isHost ? await db.prepare(
   `SELECT id, title, upvote_count FROM topics
    WHERE slate_id = ? AND status = 'open' ORDER BY upvote_count DESC LIMIT 20`,
 ).bind(slate.id).all<{ id: string; title: string; upvote_count: number }>() : { results: [] };
+
+// When this slot has a topic attached, surface the topic's discussion
+// thread inline so members reading the slot page can join the
+// conversation without clicking through to /topics/[id]. The thread
+// itself is anchored on the topic — same data, two surfaces.
+const slotComments = slot.topic_id
+  ? await fetchTopicComments(db as any, slot.topic_id)
+  : null;
+
+const isAdmin = isAppAdmin(user?.scopes);
+const isMember = !!member;
+const signInHrefForSlot = signInUrlForCtx(Astro, `/${slug}/slot/${slot.id}`);
 ---
 
 <Layout
   title={`${fmtDate.format(new Date(startMs))} · ${slate.name}`}
-  slate={{ name: slate.name, slug: slate.slug }}
+  slate={{ name: slate.name, slug: slate.slug, artwork_image_url: slate.artwork_image_url }}
   ogImage={ogImg}
   ogDescription={ogDesc}
 >
-  <section class="py-8 max-w-3xl">
-    <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
+  <SlateChildPage
+    parent={{ label: slate.name, href: `/${slug}` }}
+    current={displayTitle ?? fmtDate.format(new Date(startMs))}
+  >
     <h1 class="text-3xl font-bold">{fmtDate.format(new Date(startMs))}</h1>
     <p class="opacity-75 mt-1 font-mono text-sm flex flex-wrap items-center gap-2">
       <span>{fmtTime.format(new Date(startMs))} – {fmtTime.format(new Date(endMs))} {slate.timezone}</span>
@@ -252,8 +269,22 @@ const availableTopics = isHost ? await db.prepare(
       </div>
     )}
 
-    <p class="mt-8 text-sm"><a href={`/${slug}`} class="link">← Back to schedule</a></p>
-  </section>
+    {/* Discussion thread — anchored on the slot's topic, rendered
+        inline here so members talking before-record carry through
+        the conversation after the slot is assigned. */}
+    {slot.topic_id && slotComments && (
+      <TopicDiscussion
+        topicId={slot.topic_id}
+        tree={slotComments.tree}
+        viewerId={user?.id ?? null}
+        viewerIsMember={isMember || isAdmin}
+        viewerIsAdmin={(!!member?.is_admin) || isAdmin}
+        signInHref={signInHrefForSlot}
+        subtext="Comments live on the topic — they show up here AND on the topic's page."
+      />
+    )}
+
+  </SlateChildPage>
 
   <script is:inline define:vars={{ slotId: slot.id }}>
     const status = document.getElementById('host-status');

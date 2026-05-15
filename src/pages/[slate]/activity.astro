@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import SlateChildPage from '@/components/SlateChildPage.astro';
 import ActivityTokens from '@/components/ActivityTokens.astro';
 import { getDb } from '@/lib/db';
 import { signInUrlForCtx, isAppAdmin } from '@/lib/auth';
@@ -14,8 +15,8 @@ const user = Astro.locals.user;
 if (!user) return Astro.redirect(signInUrlForCtx(Astro, `/${slug}/activity`));
 
 const db = getDb(Astro);
-const slate = await db.prepare('SELECT id, name, timezone, is_public FROM slates WHERE slug = ?').bind(slug)
-  .first<{ id: string; name: string; timezone: string; is_public: number }>();
+const slate = await db.prepare('SELECT id, name, timezone, is_public, artwork_image_url FROM slates WHERE slug = ?').bind(slug)
+  .first<{ id: string; name: string; timezone: string; is_public: number; artwork_image_url: string | null }>();
 if (!slate) return new Response('Not found', { status: 404 });
 
 const isAdmin = isAppAdmin(user.scopes);
@@ -67,23 +68,22 @@ const renderCtx = { slug: slug!, fmtSlotTime };
 const unreadCount = rows.results.filter((r: any) => r.created_at > watermark).length;
 ---
 
-<Layout title={`Activity · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
-  <section class="py-6 max-w-3xl">
+<Layout title={`Activity · ${slate.name}`} slate={{ name: slate.name, slug: slug!, artwork_image_url: slate.artwork_image_url }}>
+  <SlateChildPage
+    parent={{ label: slate.name, href: `/${slug}` }}
+    current="Activity"
+  >
     <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2">
       <div>
-        <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
         <h1 class="text-2xl font-bold flex items-baseline gap-2">
           Activity
           {unreadCount > 0 && <span class="badge badge-sm badge-primary">{unreadCount} new</span>}
         </h1>
         <p class="text-xs opacity-60 mt-1">Newest first. Catch up on what's changed since you last looked.</p>
       </div>
-      <div class="flex gap-2">
-        {unreadCount > 0 && (
-          <button id="mark-read-btn" class="btn btn-sm btn-primary">Mark all as read</button>
-        )}
-        <a href={`/${slug}`} class="btn btn-sm btn-ghost border border-base-300">← Schedule</a>
-      </div>
+      {unreadCount > 0 && (
+        <button id="mark-read-btn" class="btn btn-sm btn-primary">Mark all as read</button>
+      )}
     </div>
 
     <ul class="space-y-1">
@@ -111,7 +111,7 @@ const unreadCount = rows.results.filter((r: any) => r.created_at > watermark).le
     {rows.results.length === 100 && (
       <p class="text-xs opacity-50 mt-4 text-center">Showing the most recent 100 events.</p>
     )}
-  </section>
+  </SlateChildPage>
 
   <script is:inline define:vars={{ slateId: slate.id }}>
     document.getElementById('mark-read-btn')?.addEventListener('click', async () => {

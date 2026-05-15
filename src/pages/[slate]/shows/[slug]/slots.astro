@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import SlateChildPage from '@/components/SlateChildPage.astro';
 import SlotAssigner from '@/components/SlotAssigner';
 import { getDb, getEnv } from '@/lib/db';
 import { isAppAdmin, signInUrl } from '@/lib/auth';
@@ -15,8 +16,8 @@ if (!slug || !showSlug) return new Response('Not found', { status: 404 });
 
 const db = getDb(Astro);
 const slate = await db.prepare(
-  'SELECT id, slug, name, timezone, is_public FROM slates WHERE slug = ?',
-).bind(slug).first<{ id: string; slug: string; name: string; timezone: string; is_public: number }>();
+  'SELECT id, slug, name, timezone, is_public, artwork_image_url FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; slug: string; name: string; timezone: string; is_public: number; artwork_image_url: string | null }>();
 if (!slate) return new Response('Not found', { status: 404 });
 if (!slate.is_public) return new Response('Private slate', { status: 403 });
 
@@ -62,14 +63,13 @@ const toDefault = new Intl.DateTimeFormat('en-CA', {
 
 <Layout
   title={`Assign slots · ${show.name}`}
-  slate={{ name: slate.name, slug: slate.slug }}
+  slate={{ name: slate.name, slug: slate.slug, artwork_image_url: slate.artwork_image_url }}
   slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
 >
-  <article class="py-6 md:py-8 max-w-3xl">
-    <p class="text-xs font-mono opacity-60 mb-4">
-      <a href={`/${slate.slug}/shows/${show.slug}`} class="link link-hover">← {show.name}</a>
-    </p>
-
+  <SlateChildPage
+    parent={{ label: show.name, href: `/${slate.slug}/shows/${show.slug}` }}
+    current="Assign slots"
+  >
     <div class="flex items-start gap-4 flex-wrap mb-6">
       {show.cover_image_url && (
         <div class="w-16 h-16 rounded overflow-hidden bg-black border border-base-300 shrink-0">
@@ -96,5 +96,5 @@ const toDefault = new Intl.DateTimeFormat('en-CA', {
       defaultFrom={todayInTz}
       defaultTo={toDefault}
     />
-  </article>
+  </SlateChildPage>
 </Layout>

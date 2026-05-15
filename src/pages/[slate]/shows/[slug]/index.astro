@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import SlateChildPage from '@/components/SlateChildPage.astro';
 import ShowNotesView from '@/components/ShowNotesView';
 import ListenOnRow from '@/components/ListenOnRow.astro';
 import { getDb, getEnv } from '@/lib/db';
@@ -21,8 +22,8 @@ if (!slug || !showSlug) return new Response('Not found', { status: 404 });
 const db = getDb(Astro);
 
 const slate = await db.prepare(
-  'SELECT id, slug, name, timezone, is_public FROM slates WHERE slug = ?',
-).bind(slug).first<{ id: string; slug: string; name: string; timezone: string; is_public: number }>();
+  'SELECT id, slug, name, timezone, is_public, artwork_image_url FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; slug: string; name: string; timezone: string; is_public: number; artwork_image_url: string | null }>();
 if (!slate) return new Response('Not found', { status: 404 });
 if (!slate.is_public) return new Response('Private slate', { status: 403 });
 
@@ -102,7 +103,7 @@ const hostName = show.host_email
 
 const fmtUpcoming = new Intl.DateTimeFormat('en-US', {
   timeZone: slate.timezone, weekday: 'short', month: 'short', day: 'numeric',
-  hour: 'numeric', minute: '2-digit',
+  hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
 });
 const fmtPast = new Intl.DateTimeFormat('en-US', {
   timeZone: slate.timezone, month: 'short', day: 'numeric', year: 'numeric',
@@ -116,14 +117,13 @@ const fmtRevision = new Intl.DateTimeFormat('en-US', {
 <Layout
   title={`${show.name} · ${slate.name}`}
   description={show.description ?? `${show.name} on ${slate.name}`}
-  slate={{ name: slate.name, slug: slate.slug }}
+  slate={{ name: slate.name, slug: slate.slug, artwork_image_url: slate.artwork_image_url }}
   slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
 >
-  <article class="py-6 md:py-8 max-w-4xl">
-    <p class="text-xs font-mono opacity-60 mb-4">
-      <a href={`/${slate.slug}`} class="link link-hover">← {slate.name}</a>
-    </p>
-
+  <SlateChildPage
+    parent={{ label: 'Shows', href: `/${slate.slug}/shows` }}
+    current={show.name}
+  >
     {/* Header — cover + show name + host byline + listen-on */}
     <header class="flex flex-wrap items-start gap-5 md:gap-6">
       <div class="shrink-0">
@@ -205,9 +205,13 @@ const fmtRevision = new Intl.DateTimeFormat('en-US', {
               <a href={`/${slate.slug}/slot/${e.id}`}
                  class="block py-3 hover:bg-base-200/40 -mx-2 px-2 rounded transition-colors">
                 <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span class="font-mono text-xs text-signal w-44 shrink-0 tabular-nums">
+                  <time
+                    datetime={new Date(e.start_time * 1000).toISOString()}
+                    data-localize="date-time-tz"
+                    class="font-mono text-xs text-signal w-56 shrink-0 tabular-nums"
+                  >
                     {fmtUpcoming.format(new Date(e.start_time * 1000))}
-                  </span>
+                  </time>
                   <span class="font-medium flex-1 min-w-0 truncate">
                     {e.title ?? <span class="opacity-50 italic font-normal">No topic yet</span>}
                   </span>
@@ -276,5 +280,5 @@ const fmtRevision = new Intl.DateTimeFormat('en-US', {
         <a href={signInHref} class="link link-hover text-signal">Sign in</a> to join this slate and contribute.
       </p>
     )}
-  </article>
+  </SlateChildPage>
 </Layout>

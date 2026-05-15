@@ -114,16 +114,48 @@ Episode pitches. Posted by Members and Hosts.
 
 | `(topic_id, user_id)` PK | One vote per user per topic |
 
+## `comments`
+
+Discussion threads on topics. Member-on-member coordination, anchored on `topic_id`. Slot pages render the same thread inline when `slots.topic_id` matches — comments live in one place but surface on two pages.
+
+| Column | Notes |
+|---|---|
+| `id` | `cmt_<random>` |
+| `slate_id` | FK → `slates.id`, denormalized for fast per-slate queries |
+| `topic_id` | FK → `topics.id` — the owning thread |
+| `parent_id` | FK → `comments.id` (self) — nested reply; NULL for top-level comments. Infinite nesting. |
+| `author_id` | FK → `users.id` |
+| `body` | Markdown, ≤ 10 000 chars |
+| `created_at`, `updated_at` | `updated_at` set on edit; NULL on initial write |
+| `deleted_at` | Soft-delete sentinel — node is hidden but reply chain underneath is preserved |
+
+**Indexes:**
+- `comments_topic_created (topic_id, created_at)` — chronological tree fetch in `fetchTopicComments()`. Includes deleted rows since the UI renders them as `[deleted]` placeholders so reply chains keep context.
+- `comments_slate (slate_id)`
+- `comments_parent (parent_id)`
+- `comments_topic_active (topic_id) WHERE deleted_at IS NULL` — partial index for the list-view comment-count aggregation (LEFT JOIN + GROUP BY). Matches `WHERE deleted_at IS NULL` exactly so SQLite does an index-only scan. Smaller than a full index (excludes deleted rows entirely).
+
+Why flat `topic_id` instead of polymorphic `(owner_type, owner_id)`: only topics are commentable today. If we later widen to commenting on slots / shows / hosts independently of a topic, we'll switch then. See [`explanation/topic-discussion.md`](../explanation/topic-discussion.md).
+
 ## `activity`
 
 Per-slate event stream. Append-only.
 
 | Column | Notes |
 |---|---|
-| `kind` | `member_joined`, `host_promoted`, `host_demoted`, `topic_posted`, `topic_archived`, `slot_scheduled`, `slot_unscheduled`, `notes_published`, `slate_renamed` |
+| `kind` | See list below |
 | `actor_id` | Who did it |
 | `topic_id`, `slot_id`, `target_user_id` | Optional FKs to subjects |
 | `meta` | JSON blob, free-form per kind |
+
+**Kinds** (source of truth: `ActivityKind` in `src/lib/activity.ts`):
+
+- Membership: `member_joined`, `host_promoted`, `host_demoted`, `slate_admin_granted`, `slate_admin_revoked`
+- Hosts: `host_substituted`, `host_profile_edited`
+- Topics: `topic_posted`, `topic_archived`, `topic_notes_edited`, `topic_commented`
+- Slots: `slot_claimed`, `slot_scheduled`, `slot_unscheduled`, `notes_published`
+- Shows: `show_created`, `show_renamed`, `show_wiki_edited`, `show_slots_assigned`
+- Slate: `slate_renamed`
 
 Writes are best-effort (a failed log doesn't block the underlying mutation).
 

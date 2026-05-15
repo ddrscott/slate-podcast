@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import SlateChildPage from '@/components/SlateChildPage.astro';
 import ShowEditor from '@/components/ShowEditor';
 import { getDb, getEnv } from '@/lib/db';
 import { isAppAdmin, signInUrl } from '@/lib/auth';
@@ -16,8 +17,8 @@ if (!slug || !showSlug) return new Response('Not found', { status: 404 });
 const db = getDb(Astro);
 
 const slate = await db.prepare(
-  'SELECT id, slug, name, is_public FROM slates WHERE slug = ?',
-).bind(slug).first<{ id: string; slug: string; name: string; is_public: number }>();
+  'SELECT id, slug, name, is_public, artwork_image_url FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; slug: string; name: string; is_public: number; artwork_image_url: string | null }>();
 if (!slate) return new Response('Not found', { status: 404 });
 if (!slate.is_public) return new Response('Private slate', { status: 403 });
 
@@ -58,24 +59,20 @@ const isHost = (member?.role === 'host' || !!member?.is_admin) || isAdmin;
 
 <Layout
   title={`Edit · ${show.name}`}
-  slate={{ name: slate.name, slug: slate.slug }}
+  slate={{ name: slate.name, slug: slate.slug, artwork_image_url: slate.artwork_image_url }}
   slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
 >
-  <article class="py-6 md:py-8 max-w-4xl">
-    <p class="text-xs font-mono opacity-60 mb-4">
-      <a href={`/${slate.slug}/shows/${show.slug}`} class="link link-hover">← {show.name}</a>
-    </p>
-
-    <div class="flex items-baseline justify-between flex-wrap gap-3 mb-2">
+  <SlateChildPage
+    parent={{ label: show.name, href: `/${slate.slug}/shows/${show.slug}` }}
+    current="Edit"
+  >
+    <div class="flex items-baseline justify-between flex-wrap gap-3 mb-6">
       <h1 class="text-2xl md:text-3xl font-bold">Editing show</h1>
       <a href={`/${slate.slug}/shows/${show.slug}/slots`}
          class="btn btn-sm btn-ghost border border-base-300">
         Assign slots →
       </a>
     </div>
-    <p class="text-sm opacity-70 mb-6">
-      <span class="font-mono">// {show.name}</span>
-    </p>
 
     <ShowEditor
       client:load
@@ -93,5 +90,5 @@ const isHost = (member?.role === 'host' || !!member?.is_admin) || isAdmin;
       initialYoutube={show.listen_youtube_url}
       initialRss={show.listen_rss_url}
     />
-  </article>
+  </SlateChildPage>
 </Layout>

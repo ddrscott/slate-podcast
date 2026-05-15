@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import SlateChildPage from '@/components/SlateChildPage.astro';
 import { getDb } from '@/lib/db';
 
 export const prerender = false;
@@ -11,8 +12,8 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) return new Response('Bad date', { s
 
 const db = getDb(Astro);
 const slate = await db.prepare(
-  `SELECT id, name, timezone, is_public FROM slates WHERE slug = ?`,
-).bind(slug).first<{ id: string; name: string; timezone: string; is_public: number }>();
+  `SELECT id, name, timezone, is_public, artwork_image_url FROM slates WHERE slug = ?`,
+).bind(slug).first<{ id: string; name: string; timezone: string; is_public: number; artwork_image_url: string | null }>();
 if (!slate || !slate.is_public) return new Response('Not found', { status: 404 });
 
 const dayStartGuess = new Date(`${date}T00:00:00Z`).getTime() / 1000;
@@ -33,9 +34,11 @@ const dayLabel = fmtDate.format(new Date(`${date}T12:00:00Z`));
 const dayMatches = slots.results.filter(s => fmtIso.format(new Date(s.start_time * 1000)) === date);
 ---
 
-<Layout title={`${dayLabel} · ${slate.name}`} slate={{ name: slate.name, slug: slug! }}>
-  <section class="py-8 max-w-3xl">
-    <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
+<Layout title={`${dayLabel} · ${slate.name}`} slate={{ name: slate.name, slug: slug!, artwork_image_url: slate.artwork_image_url }}>
+  <SlateChildPage
+    parent={{ label: slate.name, href: `/${slug}` }}
+    current={dayLabel}
+  >
     <h1 class="text-3xl font-bold">{dayLabel}</h1>
 
     {dayMatches.length === 0 ? (
@@ -56,7 +59,5 @@ const dayMatches = slots.results.filter(s => fmtIso.format(new Date(s.start_time
         ))}
       </ul>
     )}
-
-    <p class="mt-8 text-sm"><a href={`/${slug}`} class="link">← Back to schedule</a></p>
-  </section>
+  </SlateChildPage>
 </Layout>

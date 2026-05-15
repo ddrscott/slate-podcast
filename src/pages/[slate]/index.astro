@@ -64,35 +64,9 @@ if (user && (isMember || isAdmin)) {
 }
 
 // Marquee data — same queries for everyone since this is always public.
-//
-// Hosts grid is now a Shows grid. Each show is a row; the host fields
-// come along via LEFT JOIN so we can surface "hosted by X" under the
-// show name. episode_count counts past published/recorded slots tied
-// to this show.
-const [shows, upcoming, topTopics, pastEpisodes] = await Promise.all([
-  db.prepare(
-    `SELECT s.id, s.slug, s.name, s.description, s.cover_image_url,
-            s.host_id,
-            u.display_name AS host_display_name,
-            u.email        AS host_email,
-            u.headshot_url AS host_headshot_url,
-            COUNT(DISTINCT CASE
-              WHEN sl.start_time < unixepoch() AND sl.status IN ('recorded','published')
-              THEN sl.id END) AS episode_count
-     FROM shows s
-     LEFT JOIN users u ON u.id = s.host_id
-     LEFT JOIN slots sl ON sl.show_id = s.id
-     WHERE s.slate_id = ?
-     GROUP BY s.id
-     ORDER BY episode_count DESC, LOWER(s.name)`,
-  ).bind(slate.id).all<{
-    id: string; slug: string; name: string;
-    description: string | null; cover_image_url: string | null;
-    host_id: string | null;
-    host_display_name: string | null; host_email: string | null;
-    host_headshot_url: string | null;
-    episode_count: number;
-  }>(),
+// The shows roster lives on its own page (/[slate]/shows) and is linked
+// from the nav, so the home page only loads slot-related data here.
+const [upcoming, topTopics, totalTopicsRow, pastEpisodes] = await Promise.all([
   db.prepare(
     `SELECT sl.id, sl.start_time, sl.promo_image_url, sl.topic_id, sl.show_id,
             COALESCE(sl.custom_title, sug.title) AS title,
@@ -119,11 +93,28 @@ const [shows, upcoming, topTopics, pastEpisodes] = await Promise.all([
     show_cover: string | null;
   }>(),
   // Topic Pool — open AND not already attached to a slot.
+  // Comment count via LEFT JOIN on a pre-aggregated subquery so SQLite
+  // can use the partial index comments_topic_active (which excludes
+  // soft-deleted rows). Cheaper than a correlated subquery per row.
   db.prepare(
-    `SELECT id, title, upvote_count FROM topics
-     WHERE slate_id = ? AND status = 'open' AND scheduled_slot_id IS NULL
-     ORDER BY upvote_count DESC, submitted_at DESC LIMIT 5`,
-  ).bind(slate.id).all<{ id: string; title: string; upvote_count: number }>(),
+    `SELECT s.id, s.title, s.upvote_count, COALESCE(cc.n, 0) AS comment_count
+     FROM topics s
+     LEFT JOIN (
+       SELECT topic_id, COUNT(*) AS n
+       FROM comments
+       WHERE deleted_at IS NULL
+       GROUP BY topic_id
+     ) cc ON cc.topic_id = s.id
+     WHERE s.slate_id = ? AND s.status = 'open' AND s.scheduled_slot_id IS NULL
+     ORDER BY s.upvote_count DESC, s.submitted_at DESC LIMIT 20`,
+  ).bind(slate.id).all<{ id: string; title: string; upvote_count: number; comment_count: number }>(),
+  // Total open-unscheduled topic count — feeds the "see all (N) →"
+  // affordance at the bottom of the topic pool. Same WHERE clause as
+  // the LIMIT 20 query above.
+  db.prepare(
+    `SELECT COUNT(*) AS n FROM topics
+     WHERE slate_id = ? AND status = 'open' AND scheduled_slot_id IS NULL`,
+  ).bind(slate.id).first<{ n: number }>(),
   db.prepare(
     `SELECT sl.id, sl.start_time,
             COALESCE(sl.custom_title, sug.title) AS title,
@@ -154,9 +145,9 @@ const [shows, upcoming, topTopics, pastEpisodes] = await Promise.all([
 >
   <SlateMarquee
     slate={slate}
-    shows={shows.results}
     upcoming={upcoming.results}
     topTopics={topTopics.results}
+    totalTopicCount={totalTopicsRow?.n ?? 0}
     pastEpisodes={pastEpisodes.results}
     signInHref={signInHref}
     isSignedIn={!!user}

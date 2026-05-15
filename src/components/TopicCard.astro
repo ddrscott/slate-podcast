@@ -15,6 +15,9 @@ export interface CardTopic {
   description: string | null;
   url: string | null;
   upvote_count: number;
+  // Comment count excludes soft-deleted nodes — they show as
+  // "[deleted]" in the thread but shouldn't inflate the activity signal.
+  comment_count?: number;
   status: string;                          // 'open' | 'scheduled' | 'archived'
   has_voted: number | null;
   scheduled_slot_id: string | null;
@@ -29,6 +32,9 @@ export interface CardTopic {
 
 interface Props {
   s: CardTopic;
+  // Slate slug — feeds the card's data-href for click-through to the
+  // topic detail page (/[slate]/topics/[id]).
+  slateSlug: string;
   isMember: boolean;
   isHost: boolean;
   currentUserId: string | undefined;
@@ -39,7 +45,7 @@ interface Props {
 }
 
 const {
-  s, isMember, isHost, currentUserId, isAdmin, fmtSched,
+  s, slateSlug, isMember, isHost, currentUserId, isAdmin, fmtSched,
   showAuthor = false, showTags = false,
 } = Astro.props;
 
@@ -60,8 +66,14 @@ const titleClass = isOpen ? '' : 'opacity-70';
 const tagList = s.tags ? s.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
 const hasMeta = (showAuthor && s.author_email) ||
   (showTags && tagList.length > 0) ||
-  (isScheduled && s.scheduled_start);
+  (isScheduled && s.scheduled_start) ||
+  !!s.url;
 const hasActions = (isHost && isOpen) || canUnschedule;
+
+const detailHref = `/${slateSlug}/topics/${s.id}`;
+const shortUrl = s.url
+  ? s.url.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  : null;
 
 const hostName = displayName({
   display_name: s.scheduled_host_display_name ?? null,
@@ -77,33 +89,43 @@ const authorName = displayName({
   data-topic-card={s.id}
   data-topic-status={s.status}
   data-topic-title={s.title}
+  data-href={detailHref}
   class={`topic-card rounded border ${cardBorder} ${cardBg} transition-colors cursor-pointer hover:border-base-content/30`}
-  role="button"
+  role="link"
   tabindex="0"
   aria-label={`Open details for ${s.title}`}
 >
   <div class="flex items-stretch gap-2 p-3">
-    {isMember ? (
-      <button
-        class="upvote shrink-0 w-12 min-h-[48px] flex flex-col items-center justify-center rounded hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-1 transition-colors"
-        data-id={s.id}
-        aria-label={`Upvote (currently ${s.upvote_count})`}
-      >
-        <span data-vote-arrow class={`text-base leading-none ${s.has_voted ? 'text-signal' : 'opacity-40'}`}>▲</span>
-        <span data-vote-count class={`font-mono text-xs leading-tight mt-0.5 ${s.has_voted ? 'text-signal font-bold' : 'opacity-70'}`}>{s.upvote_count}</span>
-      </button>
-    ) : (
-      <div class="shrink-0 w-12 min-h-[48px] flex flex-col items-center justify-center opacity-50" aria-label={`${s.upvote_count} upvotes`}>
-        <span class="text-base leading-none">▲</span>
-        <span class="font-mono text-xs leading-tight mt-0.5">{s.upvote_count}</span>
-      </div>
-    )}
+    {/* Left rail: upvote (top) + comment count (bottom). Paired
+        visually so the "activity" signal — votes AND discussion —
+        is the first thing the eye lands on. */}
+    <div class="shrink-0 w-12 flex flex-col items-center">
+      {isMember ? (
+        <button
+          class="upvote w-12 min-h-[48px] flex flex-col items-center justify-center rounded hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-1 transition-colors"
+          data-id={s.id}
+          aria-label={`Upvote (currently ${s.upvote_count})`}
+        >
+          <span data-vote-arrow class={`text-base leading-none ${s.has_voted ? 'text-signal' : 'opacity-40'}`}>▲</span>
+          <span data-vote-count class={`font-mono text-xs leading-tight mt-0.5 ${s.has_voted ? 'text-signal font-bold' : 'opacity-70'}`}>{s.upvote_count}</span>
+        </button>
+      ) : (
+        <div class="w-12 min-h-[48px] flex flex-col items-center justify-center opacity-50" aria-label={`${s.upvote_count} upvotes`}>
+          <span class="text-base leading-none">▲</span>
+          <span class="font-mono text-xs leading-tight mt-0.5">{s.upvote_count}</span>
+        </div>
+      )}
+      {(s.comment_count ?? 0) > 0 && (
+        <div class="mt-1 flex flex-col items-center opacity-60" aria-label={`${s.comment_count} comment${s.comment_count === 1 ? '' : 's'}`}>
+          <span class="text-xs leading-none" aria-hidden="true">💬</span>
+          <span class="font-mono text-xs leading-tight mt-0.5">{s.comment_count}</span>
+        </div>
+      )}
+    </div>
 
     <div data-card-content class="flex-1 min-w-0 py-1">
       <h3 data-card-title class={`font-semibold text-base leading-snug break-words ${titleClass}`}>
-        {s.url ? (
-          <a href={s.url} target="_blank" rel="noopener noreferrer" class="hover:text-signal transition-colors">{s.title}</a>
-        ) : s.title}
+        {s.title}
       </h3>
 
       {s.description && (
@@ -123,6 +145,12 @@ const authorName = displayName({
           )}
           {showTags && tagList.length > 0 && (
             <span class="opacity-80">{tagList.join(' · ')}</span>
+          )}
+          {shortUrl && (
+            <a href={s.url!} target="_blank" rel="noopener noreferrer"
+               class="opacity-80 hover:text-signal hover:opacity-100 transition-colors">
+              ↗ {shortUrl}
+            </a>
           )}
         </div>
       )}
@@ -152,3 +180,26 @@ const authorName = displayName({
     </div>
   </div>
 </article>
+
+<script>
+  // Card-level click → topic detail page. Skips clicks that landed on
+  // an interactive child (button, link) so upvote / schedule / external
+  // URL still behave normally. Keyboard equivalent: Enter or Space.
+  document.querySelectorAll<HTMLElement>('.topic-card[data-href]').forEach(card => {
+    const href = card.dataset.href;
+    if (!href) return;
+    card.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('button, a')) return;
+      window.location.href = href;
+    });
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        const target = e.target as HTMLElement;
+        if (target.closest('button, a')) return;
+        e.preventDefault();
+        window.location.href = href;
+      }
+    });
+  });
+</script>

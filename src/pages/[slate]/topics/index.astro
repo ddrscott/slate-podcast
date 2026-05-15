@@ -1,5 +1,6 @@
 ---
 import Layout from '@/layouts/Layout.astro';
+import SlateChildPage from '@/components/SlateChildPage.astro';
 import ScheduleTopicPanel from '@/components/ScheduleTopicPanel.astro';
 import TopicCard from '@/components/TopicCard.astro';
 import { getDb, getEnv } from '@/lib/db';
@@ -17,8 +18,8 @@ if (!slug) return new Response('Not found', { status: 404 });
 
 const db = getDb(Astro);
 const slate = await db.prepare(
-  'SELECT id, name, is_public, timezone FROM slates WHERE slug = ?',
-).bind(slug).first<{ id: string; name: string; is_public: number; timezone: string }>();
+  'SELECT id, name, is_public, timezone, artwork_image_url FROM slates WHERE slug = ?',
+).bind(slug).first<{ id: string; name: string; is_public: number; timezone: string; artwork_image_url: string | null }>();
 if (!slate) return new Response('Not found', { status: 404 });
 if (!slate.is_public) return new Response('Private slate', { status: 403 });
 
@@ -49,11 +50,18 @@ const topics = await db.prepare(
           sl.host_id AS scheduled_host_id,
           spk.email AS scheduled_host_email,
           spk.display_name AS scheduled_host_display_name,
-          (SELECT 1 FROM topic_votes v WHERE v.topic_id = s.id AND v.user_id = ?) AS has_voted
+          (SELECT 1 FROM topic_votes v WHERE v.topic_id = s.id AND v.user_id = ?) AS has_voted,
+          COALESCE(cc.n, 0) AS comment_count
    FROM topics s
    JOIN users u ON u.id = s.author_id
    LEFT JOIN slots sl ON sl.id = s.scheduled_slot_id
    LEFT JOIN users spk ON spk.id = sl.host_id
+   LEFT JOIN (
+     SELECT topic_id, COUNT(*) AS n
+     FROM comments
+     WHERE deleted_at IS NULL
+     GROUP BY topic_id
+   ) cc ON cc.topic_id = s.id
    WHERE ${where}
    ORDER BY (s.status = 'open') DESC, s.upvote_count DESC, s.submitted_at DESC`,
 ).bind(user?.id ?? '', ...params).all<any>();
@@ -66,15 +74,12 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
 
 <Layout
   title={`Topics · ${slate.name}`}
-  slate={{ name: slate.name, slug: slug! }}
+  slate={{ name: slate.name, slug: slug!, artwork_image_url: slate.artwork_image_url }}
   slateContext={{ isMember, isHost, role: member?.role as 'member' | 'host' | undefined ?? null }}
 >
-  <section class="py-8 max-w-3xl">
+  <SlateChildPage>
     <div class="flex items-baseline justify-between mb-4 gap-4 flex-wrap">
-      <div>
-        <p class="font-mono text-sm text-signal mb-1">// {slate.name}</p>
-        <h1 class="text-2xl font-bold">Topic pool</h1>
-      </div>
+      <h1 class="text-2xl font-bold">Topic pool</h1>
       {isMember || isAdmin ? (
         <a href={`/${slug}/topics/new`} class="btn btn-primary btn-sm">+ Suggest</a>
       ) : user ? (
@@ -95,6 +100,7 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
       {topics.results.map((s: any) => (
         <TopicCard
           s={s}
+          slateSlug={slug!}
           isMember={isMember}
           isHost={isHost}
           currentUserId={user?.id}
@@ -106,8 +112,7 @@ const fmtSched = new Intl.DateTimeFormat('en-US', {
       ))}
     </div>
 
-    <p class="mt-8 text-sm"><a href={`/${slug}`} class="link">← Back to schedule</a></p>
-  </section>
+  </SlateChildPage>
 
   {isHost && <ScheduleTopicPanel slate={{ id: slate.id, slug: slug!, name: slate.name }} />}
 

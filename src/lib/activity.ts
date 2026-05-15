@@ -42,6 +42,7 @@ export type ActivityKind =
   | 'show_renamed'         // show's name was changed
   | 'show_wiki_edited'     // show's wiki body saved
   | 'show_slots_assigned'  // bulk assignment of slots to a show
+  | 'topic_commented'      // member posted a comment / reply on a topic
   | 'slate_renamed';
 
 export interface LogArgs {
@@ -326,6 +327,24 @@ export const Enqueue = {
     });
   },
 
+  // Member posted a comment (or a reply) on a topic. `isReply` flips the
+  // verb in the renderer ("commented" vs. "replied"). commentId is
+  // stored on the activity row's meta in case future UI wants to deep-
+  // link to the specific comment within the thread.
+  topicCommented(ctx: APIContext, args: BaseArgs & {
+    topicId: string;
+    commentId: string;
+    isReply: boolean;
+  }) {
+    return logActivity(ctx, {
+      kind: 'topic_commented',
+      slateId: args.slateId,
+      actorId: args.actorId,
+      topicId: args.topicId,
+      meta: { comment_id: args.commentId, is_reply: args.isReply },
+    });
+  },
+
   slateRenamed(ctx: APIContext, args: BaseArgs & { from: string; to: string }) {
     return logActivity(ctx, {
       kind: 'slate_renamed',
@@ -550,6 +569,12 @@ const RENDERERS: Record<ActivityKind, (r: ActivityRow, ctx: RenderContext) => To
     txt(`${r.meta?.count ?? '?'} slot${r.meta?.count === 1 ? '' : 's'}`),
     txt(' to '),
     name(String(r.meta?.show_name ?? 'a show')),
+  ],
+
+  topic_commented: (r, ctx) => [
+    name(actorName(r)),
+    txt(r.meta?.is_reply ? ' replied on ' : ' commented on '),
+    ...(r.topic_title ? [topicLink(ctx.slug, r.topic_title)] : [txt('a topic')]),
   ],
 };
 
