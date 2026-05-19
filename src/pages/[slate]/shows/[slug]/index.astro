@@ -81,7 +81,7 @@ const upcoming = await db.prepare(
 // real episodes have aired. 'open' (nobody claimed, time passed) and
 // 'cancelled' stay excluded — those aren't episodes that happened.
 const past = await db.prepare(
-  `SELECT sl.id, sl.start_time, sl.status,
+  `SELECT sl.id, sl.start_time, sl.status, sl.episode_number,
           COALESCE(sl.custom_title, sug.title) AS title,
           u.display_name AS host_display_name,
           u.email        AS host_email
@@ -92,7 +92,8 @@ const past = await db.prepare(
      AND sl.status NOT IN ('cancelled', 'open')
    ORDER BY sl.start_time DESC LIMIT 50`,
 ).bind(show.id).all<{
-  id: string; start_time: number; status: string; title: string | null;
+  id: string; start_time: number; status: string; episode_number: number | null;
+  title: string | null;
   host_display_name: string | null; host_email: string | null;
 }>();
 
@@ -257,6 +258,11 @@ const fmtRevision = new Intl.DateTimeFormat('en-US', {
                     <span class="font-mono text-xs opacity-60 w-24 shrink-0 tabular-nums">
                       {fmtPast.format(new Date(e.start_time * 1000))}
                     </span>
+                    {e.episode_number != null && (
+                      <span class="font-mono text-xs text-signal w-10 shrink-0 tabular-nums">
+                        #{e.episode_number}
+                      </span>
+                    )}
                     <span class="font-medium flex-1 min-w-0 truncate">
                       {e.title ?? <span class="opacity-50 italic font-normal">Untitled</span>}
                     </span>

@@ -25,6 +25,7 @@ const slot = await db.prepare(
   `SELECT sl.id, sl.start_time, sl.duration_minutes, sl.status,
           sl.host_id, sl.topic_id, sl.show_id, sl.custom_title,
           sl.show_notes, sl.show_notes_published_at, sl.promo_image_url,
+          sl.episode_number,
           sug.title AS topic_title, sug.description AS topic_description,
           spk.email AS host_email, spk.display_name AS host_display_name,
           spk.headshot_url AS host_headshot_url,
@@ -102,7 +103,12 @@ const signInHrefForSlot = signInUrlForCtx(Astro, `/${slug}/slot/${slot.id}`);
     parent={{ label: slate.name, href: `/${slug}` }}
     current={displayTitle ?? fmtDate.format(new Date(startMs))}
   >
-    <h1 class="text-3xl font-bold">{fmtDate.format(new Date(startMs))}</h1>
+    <h1 class="text-3xl font-bold flex items-baseline flex-wrap gap-3">
+      {slot.episode_number != null && (
+        <span class="font-mono text-signal text-2xl tabular-nums">#{slot.episode_number}</span>
+      )}
+      <span>{fmtDate.format(new Date(startMs))}</span>
+    </h1>
     <p class="opacity-75 mt-1 font-mono text-sm flex flex-wrap items-center gap-2">
       <span>{fmtTime.format(new Date(startMs))} – {fmtTime.format(new Date(endMs))} {slate.timezone}</span>
       <span class="opacity-50">·</span>

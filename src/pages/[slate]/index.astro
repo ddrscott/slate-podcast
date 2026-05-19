@@ -116,7 +116,7 @@ const [upcoming, topTopics, totalTopicsRow, pastEpisodes] = await Promise.all([
      WHERE slate_id = ? AND status = 'open' AND scheduled_slot_id IS NULL`,
   ).bind(slate.id).first<{ n: number }>(),
   db.prepare(
-    `SELECT sl.id, sl.start_time,
+    `SELECT sl.id, sl.start_time, sl.episode_number,
             COALESCE(sl.custom_title, sug.title) AS title,
             u.display_name AS host_display_name,
             u.email        AS host_email,
@@ -130,7 +130,8 @@ const [upcoming, topTopics, totalTopicsRow, pastEpisodes] = await Promise.all([
        AND sl.status IN ('recorded','published')
      ORDER BY sl.start_time DESC LIMIT 12`,
   ).bind(slate.id).all<{
-    id: string; start_time: number; title: string | null;
+    id: string; start_time: number; episode_number: number | null;
+    title: string | null;
     host_display_name: string | null; host_email: string | null;
     show_slug: string | null; show_name: string | null;
   }>(),
