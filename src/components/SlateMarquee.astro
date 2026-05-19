@@ -165,9 +165,11 @@ if (isMember || isHost) {
                         <span class="opacity-50">·</span>
                         <time datetime={iso} data-localize="time-tz" class="opacity-70">{timeStr}</time>
                       </div>
-                      <h2 class="mt-2 md:mt-3 lg:mt-2 text-base sm:text-xl md:text-3xl lg:text-xl xl:text-2xl font-bold leading-tight md:leading-[1.15] tracking-tight line-clamp-3">
-                        {s.title ?? <span class="opacity-50 italic font-normal">No topic yet</span>}
-                      </h2>
+                      {s.title && (
+                        <h2 class="mt-2 md:mt-3 lg:mt-2 text-base sm:text-xl md:text-3xl lg:text-xl xl:text-2xl font-bold leading-tight md:leading-[1.15] tracking-tight line-clamp-3">
+                          {s.title}
+                        </h2>
+                      )}
                       {hostLabel && (
                         <div class="mt-2 md:mt-4 lg:mt-2 flex items-center gap-2 text-xs sm:text-sm min-w-0">
                           {s.host_headshot_url ? (
@@ -228,9 +230,11 @@ if (isMember || isHost) {
                               <time datetime={iso} data-localize="date" class="text-signal truncate">{dateStr}</time>
                               <time datetime={iso} data-localize="time-tz" class="opacity-60 shrink-0">{timeStr}</time>
                             </div>
-                            <div class="mt-2 font-semibold leading-snug line-clamp-3 text-sm">
-                              {s.title ?? <span class="opacity-50 italic font-normal">No topic yet</span>}
-                            </div>
+                            {s.title && (
+                              <div class="mt-2 font-semibold leading-snug line-clamp-3 text-sm">
+                                {s.title}
+                              </div>
+                            )}
                             {hostLabel && (
                               <div class="mt-2 flex items-center gap-2 text-xs">
                                 {s.host_headshot_url ? (
