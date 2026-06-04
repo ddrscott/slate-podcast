@@ -13,7 +13,7 @@ export const PATCH: APIRoute = async (ctx) => {
     const slotId = ctx.params.id!;
     const body = await ctx.request.json() as { show_notes?: string };
     if (typeof body.show_notes !== 'string') throw new HttpError(400, 'invalid_show_notes');
-    if (body.show_notes.length > 50_000) throw new HttpError(400, 'show_notes_too_long');
+    if (body.show_notes.length > 1_000_000) throw new HttpError(400, 'show_notes_too_long');
 
     const db = getDb(ctx);
     const slot = await db.prepare(

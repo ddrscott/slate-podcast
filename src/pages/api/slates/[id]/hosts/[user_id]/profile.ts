@@ -14,10 +14,10 @@ export const prerender = false;
 // as the show_name PATCH and show-logo endpoints.
 //
 // Body: { body: string, change_summary?: string }
-//   body            — required, markdown, ≤ 100_000 chars
+//   body            — required, markdown, ≤ 1_000_000 chars
 //   change_summary  — optional one-liner, ≤ 200 chars
 
-const MAX_BODY_LEN = 100_000;
+const MAX_BODY_LEN = 1_000_000;
 const MAX_SUMMARY_LEN = 200;
 
 async function resolveTarget(ctx: Parameters<APIRoute>[0]) {

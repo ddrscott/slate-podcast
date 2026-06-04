@@ -29,6 +29,14 @@ export const PATCH: APIRoute = async (ctx) => {
             throw new HttpError(400, 'invalid_status');
           }
         }
+        // notes_internal can hold a large markdown corpus; cap well under
+        // D1's 2 MB row limit. custom_title is a one-line override.
+        if (k === 'notes_internal' && typeof body[k] === 'string' && (body[k] as string).length > 1_000_000) {
+          throw new HttpError(400, 'notes_internal_too_long');
+        }
+        if (k === 'custom_title' && typeof body[k] === 'string' && (body[k] as string).length > 200) {
+          throw new HttpError(400, 'custom_title_too_long');
+        }
         fields.push(`${k} = ?`);
         values.push(body[k]);
       }

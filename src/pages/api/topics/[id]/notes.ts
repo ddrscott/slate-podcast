@@ -13,15 +13,14 @@ export const prerender = false;
 // resolve the slate from the topic_id so callers don't have to pass it.
 //
 // Body: { body: string, change_summary?: string }
-//   body            — required, markdown, ≤ 50_000 chars (a hard upper
-//                     bound to keep a single revision row from being
-//                     pathologically large; practical notes will be far
-//                     smaller)
+//   body            — required, markdown, ≤ 1_000_000 chars (a hard upper
+//                     bound that keeps a single revision row well under
+//                     D1's 2 MB row limit while allowing a full corpus)
 //   change_summary  — optional one-liner, ≤ 200 chars (think git commit
 //                     message). Surfaces in the activity feed and on the
 //                     revision row.
 
-const MAX_BODY_LEN = 50_000;
+const MAX_BODY_LEN = 1_000_000;
 const MAX_SUMMARY_LEN = 200;
 
 export const POST: APIRoute = async (ctx) => {

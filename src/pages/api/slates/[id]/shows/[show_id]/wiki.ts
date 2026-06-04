@@ -13,7 +13,7 @@ export const prerender = false;
 //
 // Body: { body: string, change_summary?: string }
 
-const MAX_BODY_LEN = 100_000;
+const MAX_BODY_LEN = 1_000_000;
 const MAX_SUMMARY_LEN = 200;
 
 async function authorize(ctx: Parameters<APIRoute>[0]) {

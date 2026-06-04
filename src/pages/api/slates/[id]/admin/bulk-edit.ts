@@ -37,6 +37,14 @@ export const POST: APIRoute = async (ctx) => {
           const n = Number(v);
           if (!Number.isInteger(n) || n < 1 || n > 600) throw new HttpError(400, `invalid_duration:${d.id}`);
         }
+        // notes_internal can hold a large markdown corpus; cap well under
+        // D1's 2 MB row limit. custom_title is a one-line override.
+        if (k === 'notes_internal' && typeof v === 'string' && v.length > 1_000_000) {
+          throw new HttpError(400, `notes_internal_too_long:${d.id}`);
+        }
+        if (k === 'custom_title' && typeof v === 'string' && v.length > 200) {
+          throw new HttpError(400, `custom_title_too_long:${d.id}`);
+        }
         fields.push(`${k} = ?`);
         values.push(v);
       }
